@@ -1,0 +1,15 @@
+node_modules/
+out/
+dist/
+release/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+# Downloaded on-device voice models (npm run voice:setup)
+resources/models/
+# Audit artifacts
+.audit/
+playwright-report/
+test-results/
