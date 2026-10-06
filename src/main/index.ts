@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { adoptLoginShellPath } from './env';
 import { registerIpc, windowEmitter } from './ipc';
+import { installMenu } from './menu';
 import { Engine, type EngineHost } from './engine/engine';
 
 const here = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url));
@@ -42,6 +43,8 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // Archie's first spoken reply shouldn't wait for a click.
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
 
@@ -71,6 +74,7 @@ app.whenReady().then(async () => {
     void systemPreferences.askForMediaAccess('microphone').catch(() => false);
   }
 
+  installMenu();
   registerIpc(engine);
   createWindow();
   void engine.boot();
