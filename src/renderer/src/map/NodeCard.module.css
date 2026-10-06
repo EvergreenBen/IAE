@@ -1,0 +1,207 @@
+.pos {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 50% 50%;
+}
+
+.card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 13px 15px 12px 14px;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  transition:
+    transform var(--t-med) var(--ease-out),
+    box-shadow var(--t-med) var(--ease-out),
+    border-color var(--t-med) var(--ease-out),
+    background-color var(--t-med) var(--ease-out),
+    opacity var(--t-slow) var(--ease-out);
+}
+
+.card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-2);
+}
+
+.card[data-selected] {
+  border-color: color-mix(in srgb, var(--clay) 40%, var(--line));
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--clay) 35%, transparent),
+    var(--shadow-2);
+}
+
+.card[data-status='planned'] {
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--paper-raised) 50%, transparent);
+  box-shadow: none;
+}
+.card[data-status='planned'][data-selected] {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--clay) 35%, transparent);
+}
+.card[data-status='planned'] .label {
+  color: var(--ink-2);
+}
+
+.card[data-status='broken'] {
+  border-color: var(--bad);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 20px;
+  min-width: 0;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-md);
+  font-weight: 560;
+  letter-spacing: -0.006em;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.broken {
+  display: inline-flex;
+  color: var(--bad);
+}
+
+.count {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.summary,
+.summaryEmpty {
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 25px;
+}
+.summaryEmpty {
+  color: var(--ink-3);
+}
+
+.chips {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-end;
+  gap: 4px;
+  max-height: 44px;
+  overflow: hidden;
+  padding-left: 25px;
+}
+
+.chip,
+.more {
+  font-size: 10.5px;
+  line-height: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  color: var(--ink-2);
+  background: var(--paper-sunk);
+  white-space: nowrap;
+}
+.more {
+  background: none;
+  color: var(--ink-3);
+  padding: 0 2px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+/* Building: one slow, low-contrast sheen travelling along the border. */
+@property --sheen-a {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.sheen {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  --clear: color-mix(in srgb, var(--hue) 0%, transparent);
+  background: conic-gradient(
+    from var(--sheen-a),
+    var(--clear) 0deg,
+    color-mix(in srgb, var(--hue) 80%, transparent) 26deg,
+    var(--clear) 54deg,
+    var(--clear) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(var(--ink) 0 0) content-box,
+    linear-gradient(var(--ink) 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: sheen 2.4s linear infinite;
+}
+
+@keyframes sheen {
+  to {
+    --sheen-a: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheen {
+    animation: none;
+    background: color-mix(in srgb, var(--hue) 45%, transparent);
+  }
+}
+
+/* Scope transitions (the layer carries data-role). The focus node is the door:
+   its words go first, its paper stays until the inner frame has taken its place. */
+:global([data-role='diveOuter']) .pos:not([data-focus]) .card {
+  opacity: 0;
+  transition: opacity 240ms var(--ease-out);
+}
+:global([data-role='diveOuter']) .pos[data-focus] .card {
+  opacity: 0;
+  box-shadow: none;
+  transition: opacity 320ms var(--ease-in-out) 320ms;
+}
+:global([data-role='diveOuter']) .pos[data-focus] .card > * {
+  opacity: 0;
+  transition: opacity 160ms var(--ease-out);
+}
+:global([data-role='surfaceOuter']) .pos:not([data-focus]) .card {
+  animation: fadeBack 360ms var(--ease-out) 300ms both;
+}
+:global([data-role='surfaceOuter']) .pos[data-focus] .card {
+  animation: fadeBack 300ms var(--ease-out) 120ms both;
+}
+:global([data-role='surfaceOuter']) .pos[data-focus] .card > * {
+  animation: fadeBack 260ms var(--ease-out) 420ms both;
+}
+@keyframes fadeBack {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

@@ -1,0 +1,84 @@
+.layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+.layer:not([data-role='base']) {
+  pointer-events: none;
+}
+
+.decor,
+.nodes {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.decor {
+  transition: opacity 280ms var(--ease-out);
+}
+
+/* Diving: the parent's furniture leaves first; the focus node lingers (see NodeCard). */
+.layer[data-role='diveOuter'] .decor {
+  opacity: 0;
+}
+.layer[data-role='surfaceOuter'] .decor {
+  animation: fadeIn 380ms var(--ease-out) 340ms both;
+}
+/* Edge labels only on a settled scope: mid-flight they'd balloon. */
+.layer:not([data-role='base']) [data-edge-label] {
+  visibility: hidden;
+}
+
+.frame {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  background: color-mix(in srgb, var(--paper-raised) 42%, transparent);
+}
+.frame[data-status='planned'] {
+  border-style: dashed;
+  border-color: var(--line-strong);
+}
+
+.frameHead {
+  position: absolute;
+  left: 28px;
+  top: 26px;
+  right: 28px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.frameHead svg {
+  align-self: center;
+  translate: 0 1px;
+}
+.frameTitle {
+  font-family: var(--font-serif);
+  font-size: var(--text-xl);
+  font-weight: 450;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.frameSummary {
+  font-size: var(--text-sm);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

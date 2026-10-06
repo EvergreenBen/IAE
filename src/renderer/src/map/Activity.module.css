@@ -1,0 +1,92 @@
+.bloom,
+.highlight {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: var(--r-lg);
+  pointer-events: none;
+}
+.bloom[data-frame],
+.highlight[data-frame] {
+  border-radius: var(--r-xl);
+}
+
+/* One soft ring in the agent's hue: expands and fades, once. */
+.bloom::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1.5px solid var(--hue);
+  animation: bloom 900ms var(--ease-out) both;
+}
+.bloom {
+  animation: hold 900ms linear both;
+}
+@keyframes bloom {
+  from {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.06, 1.12);
+  }
+}
+@keyframes hold {
+  to {
+    opacity: 1;
+  }
+}
+
+.travel {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--hue);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--hue) 22%, transparent);
+  offset-rotate: 0deg;
+  offset-anchor: 50% 50%;
+  pointer-events: none;
+  animation: travel 1100ms var(--ease-in-out) both;
+}
+@keyframes travel {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+/* The lead said "look here": a clay ring that settles and fades. */
+.highlight {
+  box-shadow: 0 0 0 2px var(--clay);
+  animation: point 1800ms var(--ease-out) both;
+}
+@keyframes point {
+  0% {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+  18% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}

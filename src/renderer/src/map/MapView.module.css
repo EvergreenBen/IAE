@@ -1,0 +1,52 @@
+.root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--paper);
+  z-index: var(--z-map);
+  touch-action: none;
+  contain: strict;
+}
+
+/* Dot grid: two scales cross-fade so zoom feels continuous at any depth (camera.ts). */
+.grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, var(--paper-dot) 1px, transparent 1.4px);
+  background-size: 26px 26px;
+}
+
+.overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  transition: opacity 220ms var(--ease-out);
+}
+.overlay[data-busy] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.empty {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 64px;
+  bottom: 140px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: var(--z-map);
+}
+.emptyLine {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 26px;
+  font-weight: 400;
+  letter-spacing: -0.012em;
+  color: var(--ink-3);
+}

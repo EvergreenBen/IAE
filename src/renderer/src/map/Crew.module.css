@@ -1,0 +1,161 @@
+.anchor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+
+/* Counter-scale: tokens stay a readable size whatever the zoom (set by the camera). */
+.ov {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: scale(var(--ov, 1));
+  transform-origin: 0 0;
+}
+
+.slot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.token {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--paper-raised);
+  box-shadow:
+    0 0 0 2px var(--paper),
+    var(--shadow-1);
+}
+
+.tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  translate: -50% 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  min-width: max-content;
+  max-width: 260px;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+  text-align: left;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--t-fast) var(--ease-out),
+    translate var(--t-med) var(--ease-out);
+}
+.token:hover .tip {
+  opacity: 1;
+  translate: -50% 0;
+}
+.tipName {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.tipTask {
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activity {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+  transition: opacity var(--t-med) var(--ease-out);
+}
+[data-lod='far'] .activity:not([data-selected]),
+[data-lod='mid'] .activity:not([data-selected]) {
+  opacity: 0;
+}
+.line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+.text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.perm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 4px 0 11px;
+  background: var(--paper-raised);
+  border: 1px solid color-mix(in srgb, var(--clay) 40%, var(--line));
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-2);
+  white-space: nowrap;
+}
+.permText {
+  font-size: 12.5px;
+  color: var(--ink);
+  margin-right: 4px;
+}
+.code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 1px 4px;
+  margin-right: 1px;
+  border-radius: 4px;
+  background: var(--paper-sunk);
+}
+.allow,
+.deny {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  transition:
+    background-color var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out);
+}
+.allow {
+  color: var(--paper-raised);
+  background: var(--clay);
+}
+.allow:hover {
+  background: var(--clay-ink);
+}
+.deny {
+  color: var(--ink-3);
+}
+.deny:hover {
+  color: var(--ink);
+  background: var(--paper-sunk);
+}
