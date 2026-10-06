@@ -15,10 +15,11 @@
   transform-origin: 0 0;
 }
 
-/* Leader: a hairline from the node's edge to the card, with a small pin at the node. */
+/* Leader: a dotted clay line from the node's edge to the card, with a small pin
+   at the node. Dotted and clay so it never reads as one more (grey, solid) edge. */
 .leader {
   position: absolute;
-  background: color-mix(in srgb, var(--clay) 55%, var(--line));
+  --dots: color-mix(in srgb, var(--clay) 70%, transparent);
 }
 .leader::before {
   content: '';
@@ -28,11 +29,22 @@
   border-radius: 50%;
   background: var(--clay);
 }
+.leader[data-side='right'],
+.leader[data-side='left'] {
+  height: 1.5px;
+  margin-top: -0.25px;
+  background: repeating-linear-gradient(to right, var(--dots) 0 2px, transparent 2px 5px);
+}
+.leader[data-side='below'],
+.leader[data-side='above'] {
+  width: 1.5px;
+  margin-left: -0.25px;
+  background: repeating-linear-gradient(to bottom, var(--dots) 0 2px, transparent 2px 5px);
+}
 .leader[data-side='right'] {
   left: 0;
   top: 0;
   width: var(--lead);
-  height: 1px;
 }
 .leader[data-side='right']::before {
   left: -2.5px;
@@ -42,7 +54,6 @@
   left: calc(-1 * var(--lead));
   top: 0;
   width: var(--lead);
-  height: 1px;
 }
 .leader[data-side='left']::before {
   right: -2.5px;
@@ -51,7 +62,6 @@
 .leader[data-side='below'] {
   left: 0;
   top: 0;
-  width: 1px;
   height: var(--lead);
 }
 .leader[data-side='below']::before {
@@ -61,7 +71,6 @@
 .leader[data-side='above'] {
   left: 0;
   top: calc(-1 * var(--lead));
-  width: 1px;
   height: var(--lead);
 }
 .leader[data-side='above']::before {
@@ -89,21 +98,13 @@
   border-radius: 2px;
   background: var(--clay);
 }
-.card[data-side='right'] {
-  left: var(--lead);
-  top: -24px;
-}
-.card[data-side='left'] {
-  right: var(--lead);
-  top: -24px;
-}
-.card[data-side='below'] {
-  right: -28px;
-  top: var(--lead);
-}
-.card[data-side='above'] {
-  right: -28px;
-  bottom: var(--lead);
+/* Offsets come inline from the placement (questionPlace.ts); a slide glides. */
+.card {
+  transition:
+    left var(--t-slow) var(--ease-in-out),
+    top var(--t-slow) var(--ease-in-out),
+    right var(--t-slow) var(--ease-in-out),
+    bottom var(--t-slow) var(--ease-in-out);
 }
 
 .head {
@@ -173,6 +174,7 @@
   font-size: 12px;
   line-height: 1.4;
   color: var(--ink-3);
+  text-wrap: pretty;
 }
 
 .options {
@@ -182,13 +184,15 @@
   margin-top: 12px;
 }
 .option {
-  height: 28px;
-  padding: 0 12px;
+  min-height: 28px;
+  max-width: 100%;
+  padding: 5px 12px;
   font-size: 12.5px;
+  line-height: 1.3;
+  text-align: left;
   color: var(--ink-2);
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-pill);
-  white-space: nowrap;
+  border-radius: var(--r-lg); /* a full pill at one line, still soft if a long option wraps */
   transition:
     color var(--t-fast) var(--ease-out),
     background-color var(--t-fast) var(--ease-out),
@@ -247,20 +251,21 @@
   color: var(--paper-raised);
 }
 
-/* Far out, the card would cover the map it is about: show its dot instead. */
+/* Zoomed far out (well past a normal fit) the card would cover the map it is
+   about: show its dot instead. */
 .dotAnchor[data-active] {
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--t-med) var(--ease-out);
 }
-:global([data-lod='far']) .dotAnchor[data-active] {
+:global([data-lod='tiny']) .dotAnchor[data-active] {
   opacity: 1;
   pointer-events: auto;
 }
 .anchor {
   transition: opacity var(--t-med) var(--ease-out);
 }
-:global([data-lod='far']) .anchor {
+:global([data-lod='tiny']) .anchor {
   opacity: 0;
   pointer-events: none;
 }

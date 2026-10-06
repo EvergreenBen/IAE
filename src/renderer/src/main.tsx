@@ -3,14 +3,14 @@ import { createRoot } from 'react-dom/client';
 import './styles/global.css';
 import { App } from './App';
 import { bridge, wireBridge } from './bridge';
-import { ui, useIae } from './state/store';
+import { applyEvent, ui, useIae } from './state/store';
 
 wireBridge();
 
-// Dev/audit handle: window.__iae.{useIae, ui, bridge}. URL params drive the
+// Dev/audit handle: window.__iae.{useIae, ui, bridge, applyEvent}. URL params drive the
 // mock in browser mode: ?open=sample opens the sample project, ?new=Name
 // creates an empty one.
-(window as unknown as { __iae: unknown }).__iae = { useIae, ui, bridge };
+(window as unknown as { __iae: unknown }).__iae = { useIae, ui, bridge, applyEvent };
 if (bridge.runtime === 'mock') {
   const qs = new URLSearchParams(location.search);
   if (qs.get('open')) void bridge.openProject('/Users/you/Projects/recipe-box');

@@ -40,26 +40,37 @@ export function placeholderFor({ blank, selectedLabel, questionUp }: Placeholder
   return 'Ask, decide, or describe a change…';
 }
 
+/**
+ * Short replies that only make sense as an answer: yes/no, an ordinal, "go
+ * with …". Openers like "let's", "use" or "keep" start new requests just as
+ * often ("Let's plan the offline outbox next"), so they don't count alone.
+ */
 const ANSWERISH =
-  /^(?:yes|yeah|yep|yup|sure|ok(?:ay)?|no|nope|nah|keep|go with|let'?s|use|pick|choose|the (?:first|second|third|last|former|latter)|first|second|option|later|not now|skip|either|both|neither|sounds (?:good|right)|do it|agreed|right|correct|definitely|probably|i'?d (?:say|go|keep|pick))\b/i;
+  /^(?:yes|yeah|yep|yup|sure|ok(?:ay)?|no|nope|nah|the (?:first|second|third|last|former|latter)(?: one)?|first|second|third|either|both|neither|sounds (?:good|right)|do it|agreed|go with|later|not now|skip)\b/i;
+/** An answer-like opener only counts when the whole reply is this short. */
+const SHORT_REPLY = 5;
 
 const words = (s: string): string[] => s.toLowerCase().match(/[a-z0-9]+/g) ?? [];
 
+/** Words too common to count as echoing an option. */
+const COMMON = new Set(['with', 'from', 'that', 'this', 'them', 'they', 'then', 'than', 'into', 'have', 'will', 'just', 'only', 'more', 'some', 'also', 'what', 'when', 'your', 'each', 'make', 'want', 'need']);
+
 /**
- * Does this utterance plausibly answer the question? Short replies, replies
- * that echo an option, and replies that start like an answer count. Longer
- * new requests ("add a billing module") are sent without the agenda id; the
- * lead still sees the open question in its context and can resolve it.
+ * Does this utterance plausibly answer the question? Short answer-like replies
+ * ("yes", "the first one", "go with tokens") count, and replies that echo an
+ * option: two of its words, or one in a short reply ("tokens are fine").
+ * Anything else ("show me the backend") is sent without the agenda id; the
+ * lead still sees the open question and can resolve it if it was an answer.
  */
 export function answersQuestion(text: string, item: AgendaItem | null): boolean {
   if (!item) return false;
   const t = text.trim();
   if (!t) return false;
-  const w = words(t);
-  if (ANSWERISH.test(t)) return true;
+  const w = new Set(words(t));
+  if (ANSWERISH.test(t) && words(t).length <= SHORT_REPLY) return true;
   for (const opt of item.options ?? []) {
-    const ow = words(opt).filter((x) => x.length > 3);
-    if (ow.length && ow.some((x) => w.includes(x))) return true;
+    const hits = new Set(words(opt).filter((x) => x.length > 3 && !COMMON.has(x) && w.has(x))).size;
+    if (hits >= 2 || (hits === 1 && w.size <= 8)) return true;
   }
-  return w.length <= 6;
+  return false;
 }

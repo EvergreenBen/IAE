@@ -11,6 +11,7 @@
 //   away       eyes closed, claws lowered
 
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useIae } from '../state/store';
 import { onSpeechPulse } from '../voice/pulse';
 import styles from './Archie.module.css';
 
@@ -193,6 +194,7 @@ export function Archie({ size = 40, state = 'idle', level = 0, lookAt, glance = 
 
   const lv = state === 'listening' ? clamp(level, 0, 1) : 0;
   const cls = [styles.archie, className].filter(Boolean).join(' ');
+  const leadName = useIae((st) => st.settings.leadName || 'Archie');
 
   return (
     <svg
@@ -205,7 +207,7 @@ export function Archie({ size = 40, state = 'idle', level = 0, lookAt, glance = 
       height={size}
       viewBox="0 0 40 40"
       role="img"
-      aria-label={title ?? `Archie, ${LABEL[state]}`}
+      aria-label={title ?? `${leadName}, ${LABEL[state]}`}
     >
       <g className={styles.lean}>
         <g className={styles.squash}>

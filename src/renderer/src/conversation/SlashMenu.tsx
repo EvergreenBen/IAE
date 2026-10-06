@@ -1,6 +1,7 @@
 // "/" at the start of the intent line: Claude Code's commands and skills,
 // fuzzy-filtered, above the line. ↑↓ to move, ↵ to run, Tab to complete.
 
+import { useLayoutEffect, useRef } from 'react';
 import type { SlashCommandInfo } from '@shared/model';
 import styles from './SlashMenu.module.css';
 
@@ -30,11 +31,29 @@ export function fuzzyScore(query: string, target: string): number {
   return score - t.length * 0.1;
 }
 
-export function filterCommands(all: SlashCommandInfo[], query: string, limit = 7): SlashCommandInfo[] {
+/**
+ * Rank: the name (or a ":"/"-" part of it) starts with the query, then the
+ * name contains it, then a fuzzy match on the name, then on the description.
+ * "/rev" → review, code-review:review, … before design-revoke.
+ */
+export function slashScore(query: string, c: SlashCommandInfo): number {
+  const q = query.toLowerCase();
+  const name = c.name.toLowerCase();
+  if (!q) return 1;
+  if (name.startsWith(q)) return 4000 - name.length;
+  if (name.split(/[:\-_/]/).some((part) => part.startsWith(q))) return 3000 - name.length;
+  const at = name.indexOf(q);
+  if (at >= 0) return 2000 - at;
+  const f = fuzzyScore(q, name);
+  if (f > 0) return 1000 + f;
+  return fuzzyScore(q, c.description.toLowerCase()) * 0.3;
+}
+
+export function filterCommands(all: SlashCommandInfo[], query: string, limit = 60): SlashCommandInfo[] {
   return all
-    .map((c) => ({ c, s: Math.max(fuzzyScore(query, c.name), fuzzyScore(query, c.description) * 0.3) }))
+    .map((c, i) => ({ c, i, s: slashScore(query, c) }))
     .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s)
+    .sort((a, b) => b.s - a.s || a.i - b.i)
     .slice(0, limit)
     .map((x) => x.c);
 }
@@ -48,8 +67,14 @@ interface Props {
 }
 
 export function SlashMenu({ items, active, loading, onPick, onHover }: Props) {
+  // Keep the active row in view as ↑↓ move through a long list.
+  const list = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = list.current?.children[active] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [active, items]);
   return (
-    <div className={styles.menu} role="listbox" aria-label="Claude Code commands">
+    <div ref={list} className={styles.menu} role="listbox" aria-label="Claude Code commands">
       {items.length === 0 ? (
         <div className={styles.empty}>{loading ? 'Looking for commands…' : 'No matching command'}</div>
       ) : (

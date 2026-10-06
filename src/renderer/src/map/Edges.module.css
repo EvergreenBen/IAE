@@ -53,12 +53,19 @@
     visibility 0s;
 }
 .label[data-hi] {
+  z-index: 1;
   color: var(--ink-2);
   border-color: var(--line-strong);
 }
-/* Labels only when zoomed in enough to read them. */
+/* Labels only when zoomed in enough to read them, and only as many as the
+   channel can hold calmly (edgeLabels.ts); the rest show for a hovered or
+   selected node. */
+[data-lod='tiny'] .label,
 [data-lod='far'] .label,
-[data-lod='mid'] .label {
+[data-lod='mid'] .label,
+[data-lod='near'] .label[data-tier='close']:not([data-hi]),
+[data-lod='near'] .label[data-tier='hover']:not([data-hi]),
+[data-lod='close'] .label[data-tier='hover']:not([data-hi]) {
   visibility: hidden;
 }
 

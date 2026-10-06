@@ -2,6 +2,7 @@
 // what only the map cares about: which scope layers are on screen, layouts,
 // hover, the question the user pinned or deferred, transient highlights.
 import { create } from 'zustand';
+import type { Rect } from './geometry';
 import type { ScopeLayout } from './layout';
 
 /**
@@ -38,6 +39,8 @@ export interface MapLocal {
   highlight: { id: string; seq: number } | null;
   /** Where ghosts were last drawn, so a committed node can grow from that spot. */
   ghostSpots: Record<string, { x: number; y: number; scope: string; at: number }>;
+  /** The question card on the shown scope (world rect), so ghosts keep clear of it. */
+  card: Rect | null;
 }
 
 export const useMapLocal = create<MapLocal>(() => ({
@@ -50,6 +53,7 @@ export const useMapLocal = create<MapLocal>(() => ({
   later: [],
   highlight: null,
   ghostSpots: {},
+  card: null,
 }));
 
 let hlSeq = 0;
@@ -61,6 +65,6 @@ export const mapLocal = {
     useMapLocal.setState({ highlight: { id, seq: ++hlSeq } });
   },
   reset() {
-    useMapLocal.setState({ shown: undefined, layers: [], layouts: {}, busy: false, hovered: null, pinnedAgenda: null, later: [], highlight: null, ghostSpots: {} });
+    useMapLocal.setState({ shown: undefined, layers: [], layouts: {}, busy: false, hovered: null, pinnedAgenda: null, later: [], highlight: null, ghostSpots: {}, card: null });
   },
 };

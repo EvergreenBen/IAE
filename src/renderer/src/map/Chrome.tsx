@@ -6,7 +6,7 @@ import { ancestorsOf } from '@shared/map';
 import { CrewMark } from '../avatar/CrewMark';
 import { ui, useIae } from '../state/store';
 import { resolveAnchor, useShownLayout } from './anchors';
-import { Permission } from './Crew';
+import { AgentCard, Permission } from './Crew';
 import s from './Chrome.module.css';
 
 const LIVE = new Set(['starting', 'thinking', 'working', 'waiting', 'done']);
@@ -74,16 +74,10 @@ export function Chrome() {
                   exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}
                   transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
                 >
-                  <button type="button" className={`${s.memberBtn} no-drag`} onClick={() => a.nodeId && ui.focus(a.nodeId, 'show')} aria-label={`${a.name}: ${a.task}`}>
+                  <button type="button" className={`${s.memberBtn} no-drag`} onClick={() => a.nodeId && ui.focus(a.nodeId, 'show')} aria-label={`${a.name}: ${a.task}. Show where.`}>
                     <CrewMark hue={a.hue} name={a.name} size={22} state={waiting ? 'waiting' : a.status} />
-                    <span className={s.tip} data-hidden={(perm && !onMap) || undefined}>
-                      <span className={s.tipName}>
-                        {a.name}
-                        {where && <span className={s.tipWhere}> · {where}</span>}
-                      </span>
-                      <span className={s.tipTask}>{waiting ? 'Waiting on you' : a.status === 'done' ? (a.result ?? 'Done') : a.task}</span>
-                    </span>
                   </button>
+                  {!(perm && !onMap) && <AgentCard agent={waiting && a.status !== 'waiting' ? { ...a, status: 'waiting' } : a} where={where} className={`${s.tip} no-drag`} />}
                   {perm && !onMap && (
                     <span className={`${s.permHere} no-drag`}>
                       <Permission perm={perm} />

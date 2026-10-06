@@ -96,12 +96,14 @@ function Highlight() {
   if (!hl) return null;
   const at = anchor(hl.id);
   if (!at) return null;
+  // Positioned with left/top: the ring's own animation owns `transform` (a CSS
+  // animation overrides an inline transform, which would pin it to the origin).
   return (
     <div
       key={hl.seq}
       className={s.highlight}
       data-frame={at.frame || undefined}
-      style={{ transform: `translate(${at.rect.x}px, ${at.rect.y}px)`, width: at.rect.w, height: at.rect.h }}
+      style={{ left: at.rect.x, top: at.rect.y, width: at.rect.w, height: at.rect.h }}
       onAnimationEnd={() => useMapLocal.setState({ highlight: null })}
     />
   );

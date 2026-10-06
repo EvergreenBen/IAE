@@ -8,7 +8,16 @@ import { select, type Selection } from 'd3-selection';
 import { zoom as d3zoom, zoomIdentity, type ZoomBehavior, type D3ZoomEvent } from 'd3-zoom';
 import { clamp, composed, IDENTITY, type Mapping, type Rect, type View } from './geometry';
 
-export const FIT_PAD = { top: 64, bottom: 140, side: 48 };
+/**
+ * The conversation zone at the bottom of the window: intent line (24px from the
+ * edge, 52px tall), the gap above it and a caption of up to three lines. Nothing
+ * on the map should sit there by default (see Caption.tsx, ConversationLayer).
+ */
+export const CONVERSATION_ZONE = 168;
+/** Padding when fitting a scope: clear of the chrome strip and the conversation. */
+export const FIT_PAD = { top: 64, bottom: CONVERSATION_ZONE, side: 48 };
+/** Where overlays (question cards) must stay on screen. */
+export const SAFE = { top: 60, bottom: CONVERSATION_ZONE, side: 16 };
 export const FLY_MS = 720;
 
 interface LayerEntry {
@@ -139,7 +148,7 @@ export class Camera {
     l.el.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.k})`;
     if (l.overlay) l.el.style.setProperty('--ov', String(clamp(v.k, 0.8, 1.2) / v.k));
     // Level of detail as attributes, so crossing a threshold restyles in CSS without React.
-    const lod = v.k < 0.55 ? 'far' : v.k < 0.9 ? 'mid' : v.k < 1.3 ? 'near' : 'close';
+    const lod = v.k < 0.38 ? 'tiny' : v.k < 0.55 ? 'far' : v.k < 0.9 ? 'mid' : v.k < 1.3 ? 'near' : 'close';
     if (lod !== l.lod) {
       l.lod = lod;
       l.el.dataset.lod = lod;
@@ -268,6 +277,39 @@ export class Camera {
   inView(r: Rect, slack = 8): boolean {
     const s = this.toScreen(r);
     const { w, h } = this.size();
-    return s.x >= FIT_PAD.side / 2 - slack && s.y >= FIT_PAD.top - 20 - slack && s.x + s.w <= w - FIT_PAD.side / 2 + slack && s.y + s.h <= h - FIT_PAD.bottom + 40 + slack;
+    return s.x >= FIT_PAD.side / 2 - slack && s.y >= FIT_PAD.top - 20 - slack && s.x + s.w <= w - FIT_PAD.side / 2 + slack && s.y + s.h <= h - FIT_PAD.bottom + 24 + slack;
+  }
+
+  /** The safe area (clear of the chrome and the conversation) in base-world units. */
+  safeWorld(): Rect {
+    const { w, h } = this.size();
+    const { k, x, y } = this.view;
+    return { x: (SAFE.side - x) / k, y: (SAFE.top - y) / k, w: Math.max(1, w - SAFE.side * 2) / k, h: Math.max(1, h - SAFE.top - SAFE.bottom) / k };
+  }
+
+  /** True once the camera has come to rest (no flight or gesture in the last moment). */
+  get resting(): boolean {
+    return !this.moving;
+  }
+
+  /**
+   * The smallest pan that brings `r` (world) inside the safe area, or null when
+   * it already is. When `r` can't fit, its top-left wins (that's where cards start).
+   */
+  panToShow(r: Rect): View | null {
+    const s = this.toScreen(r);
+    const { w, h } = this.size();
+    const x0 = SAFE.side;
+    const x1 = w - SAFE.side;
+    const y0 = SAFE.top;
+    const y1 = h - SAFE.bottom;
+    let dx = 0;
+    let dy = 0;
+    if (s.x + s.w > x1) dx = x1 - (s.x + s.w);
+    if (s.x + dx < x0) dx = x0 - s.x;
+    if (s.y + s.h > y1) dy = y1 - (s.y + s.h);
+    if (s.y + dy < y0) dy = y0 - s.y;
+    if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return null;
+    return { k: this.view.k, x: this.view.x + dx, y: this.view.y + dy };
   }
 }

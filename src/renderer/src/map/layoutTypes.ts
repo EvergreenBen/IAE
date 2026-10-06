@@ -1,5 +1,6 @@
 // Shapes produced by the per-scope layout (layout.ts) and read by the layers.
 import type { EdgeKind, NodeKind } from '@shared/model';
+import type { LabelTier } from './edgeLabels';
 import type { Pt, Rect } from './geometry';
 
 export const LEAF = { w: 200, h: 72 };
@@ -24,7 +25,8 @@ export interface EdgeRoute {
   pts: Pt[];
   kinds: EdgeKind[];
   style: EdgeStyle;
-  label?: { text: string } & Rect;
+  /** Pill at the midpoint; `tier` is the zoom at which it shows (edgeLabels.ts). */
+  label?: { text: string; tier?: LabelTier } & Rect;
   /** Edge ends at a boundary stub rather than a sibling. */
   stub?: boolean;
 }

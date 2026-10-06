@@ -17,10 +17,11 @@ rules hold for every surface.
   in, selecting or opening the lens.
 - **Motion carries meaning.** A node arriving fades and settles. An agent
   changing node glides there. The camera flies you somewhere when the lead says
-  "look at this". Nothing loops for attention: no pulsing orbs, spinners or
-  shimmer.
+  "look at this", unless you've been steering in the last few seconds (then it
+  only rings the node, if it's on screen). Nothing loops for attention: no
+  pulsing orbs, spinners or shimmer.
 - **Calm colour.** Paper, ink, and one clay accent. Clay means *the lead* or
-  *this needs you*. Agents get muted hues. Status is told by line style (dashed =
+  *this needs you*, so no node kind or agent is tinted clay. Agents get muted hues. Status is told by line style (dashed =
   planned) more than by colour.
 
 ## 2. Tokens
@@ -79,7 +80,8 @@ project's top level). Diving into a node makes it the scope.
   frame's border as short stubs labelled with the outside node ("→ Postgres").
   Clicking a stub navigates there.
 - Fit the content with padding that keeps clear of the chrome (top 64px) and
-  the intent line (bottom 140px).
+  the conversation zone (bottom 168px: the intent line plus a three-line
+  caption). Nothing on the map sits under the conversation by default.
 
 ### Layout
 
@@ -127,7 +129,10 @@ Files appear only inside the node that owns them:
 
 Rounded orthogonal paths from ELK, 1.25px `--line-strong`, with a small
 arrowhead. `events` are dashed and `auth` dotted. Labels appear as a small pill
-at the midpoint only when zoom ≥ 0.9. When an agent's work flows along an edge,
+at the midpoint only when zoom ≥ 0.9. Where several edges converge and their
+pills would stack into a column, the earlier (more important) labels show
+first; the rest wait for a closer zoom, or appear while one of their ends is
+hovered or selected. When an agent's work flows along an edge,
 a single dot travels it once. It never streams continuously.
 
 ### Agents on the map
@@ -137,7 +142,8 @@ top-right corner of the node it's working in (lifted to the visible ancestor).
 When zoomed in enough, a one-line activity shows beneath the node in
 `--ink-2`, for example "Editing session.ts". When the agent changes node, the
 token **glides** along a gentle curve (spring). Several agents on one node line
-up side by side. A permission request shows as a small pill attached to the
+up side by side. Hovering a token (on the map or in the chrome) opens a small
+card with its task, what it's doing now, and a quiet "Stop". A permission request shows as a small pill attached to the
 token, such as "Run `npm test`?", with ✓ and ✕.
 
 ### Ghost nodes (architecture autocomplete)
@@ -147,18 +153,29 @@ has a dashed clay outline, a clay-ink label in serif italic and 55% opacity. It
 fades in near the node it relates to, and dashed ghost edges hint at its
 connections. When the lead commits the node with the same id, the ghost
 **becomes** the node in place. When the utterance ends without it, the ghost
-dissolves. This makes "every word moves the map" visible.
+dissolves (about 1.5s after the lead's map changes). Each idea shows once
+("API" and "API Server" are one ghost; a generic "Database" yields to
+"Postgres"). On a bare canvas ghosts form a calm centred grid, clients on the
+left, services in the middle, data and externals on the right; on a map they
+sit near what they relate to, in free space in view. A ghost keeps its spot
+while it can, so ghosts never reshuffle as more arrive. This makes "every word moves the map" visible.
 
 ### Questions on the map
 
 The open agenda item with the highest priority appears as a **question card**
-anchored to its node: a small card (≤ 300px) offset to the free side, joined by
-a thin leader line. It has a clay left rule, the prompt in serif 15px, the
+anchored to its node: a small card (≤ 300px) offset to the free side, clear of
+nodes and edges, joined by a short dotted clay leader (dotted and clay so it
+never reads as one more edge). It has a clay left rule, the prompt in serif 15px, the
 `why` in 12px `--ink-3`, and 2–4 option pills. The first pill is the
 recommendation (clay-wash fill), the rest are outlined. It also has "later" and
-"×". **Only one card is visible at a time.** Other open items show as small
-clay dots on their nodes. If the card's node is outside the current scope, its
-visible ancestor shows the dot, and clicking it flies there.
+"×". **Only one card is visible at a time.** A card never sits under the chrome
+or the conversation zone: it slides along its side, picks another side, or the
+camera eases once to make room (never while the user is steering). Zoomed far
+out (below about 0.38×) the card steps aside and its dot stands in. Other open
+items show as small clay dots on their nodes. A card shows when its node is
+visible, or one level inside a visible node (eyebrow "In Groups"); deeper than
+that, the visible ancestor shows the dot, and clicking it flies there. A card
+about the scope itself sits outside the frame, never over its children.
 
 ## 5. The conversation surface
 
@@ -174,8 +191,10 @@ visible ancestor shows the dot, and clicking it flies there.
   - A question card is up: "Answer, or say something else…"
 - Typing `/` opens Claude Code commands and skills above the line.
 - **Caption**: the lead's words, centred above the intent line, Newsreader
-  17px, at most two lines (`max-width: 640px`). Words fade in as they stream.
-  The caption lingers about 6s after speech ends, then fades. Clicking it, or
+  17px, at most three lines (`max-width: 680px`). Words fade in as they stream.
+  A longer reply shows its latest *whole* sentences, never a line cut in half.
+  The caption lingers after speech ends (6–12s, about four words a second),
+  then fades. Clicking it, or
   pressing ⌘J, opens the **transcript**, a calm column on a sheet with no chat
   bubbles. The lead is in serif and the user in sans.
 - The user's interim speech shows live inside the intent line in `--ink-2`.

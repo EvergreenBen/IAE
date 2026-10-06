@@ -1,21 +1,25 @@
-/* At most two lines. Longer replies keep their newest words in view; the
-   older line slides up under a soft fade. */
+/* At most three lines at a reading measure. Caption.tsx measures the reply and
+   shows its latest whole sentences when it is longer, so nothing is clipped. */
+.caption,
+.measure {
+  max-width: min(680px, 100%);
+  padding: 0 var(--s-2);
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  line-height: 1.42;
+  font-optical-sizing: auto;
+  text-align: center;
+}
+
 .caption {
   pointer-events: auto;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  max-width: 640px;
-  max-height: calc(2 * 1.42em);
+  max-height: calc(3 * 1.42em + 2px);
   margin: 0 auto;
-  padding: 0 var(--s-2);
   overflow: hidden;
-  font-family: var(--font-serif);
-  font-size: var(--text-lg);
-  line-height: 1.42;
-  font-optical-sizing: auto;
   color: var(--ink);
-  text-align: center;
   text-wrap: balance;
   cursor: pointer;
   /* A paper halo keeps the words legible over edges and nodes. */
@@ -24,16 +28,27 @@
     0 0 10px var(--paper),
     0 0 18px var(--paper);
 }
-.caption[data-overflow] {
-  mask-image: linear-gradient(to bottom, transparent 0, black 0.9em);
-}
 .caption:focus-visible {
   outline-offset: 4px;
   border-radius: var(--r-sm);
 }
 
+/* Same type and measure as the caption, off screen: used to fit the words. */
+.measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: min(680px, calc(100% - 2 * var(--s-4)));
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .text {
   display: block;
+}
+
+.more {
+  color: var(--ink-3);
 }
 
 .word {

@@ -48,6 +48,7 @@ function EdgesImpl({ edges, hot, delay }: EdgesProps) {
             key={`l:${e.id}`}
             className={s.label}
             data-edge-label
+            data-tier={e.label.tier}
             data-hi={hotSet.has(e.from) || hotSet.has(e.to) || undefined}
             initial={{ opacity: 0, x: e.label.x, y: e.label.y }}
             animate={{ opacity: 1, x: e.label.x, y: e.label.y }}

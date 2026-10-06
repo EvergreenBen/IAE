@@ -1,60 +1,21 @@
 // Architecture autocomplete: tentative nodes sketched while the user talks.
 // Dashed clay, serif italic, translucent. When the lead commits a node with the
 // same id, the real node grows from the ghost's spot (see ScopeLayer).
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import type { GhostProposal } from '@shared/model';
 import { useIae } from '../state/store';
-import { resolveAnchor, useShownLayout, type Anchor } from './anchors';
-import { inflate, overlaps, roundedPath, union, type Pt, type Rect } from './geometry';
+import { resolveAnchor, useShownLayout } from './anchors';
+import { useCamera } from './context';
+import { roundedPath, union, type Rect } from './geometry';
+import { dedupeGhosts } from './ghostDedupe';
+import { GH, GW, placeOnBareCanvas, placeOnMap, type GhostSpot, type Slots } from './ghostPlace';
 import { KindGlyph } from './glyphs';
-import { LEAF, scopeKey, type ScopeLayout } from './layout';
+import { scopeKey } from './layout';
 import { useMapLocal } from './mapStore';
 import s from './Ghosts.module.css';
 
-const W = LEAF.w;
-const H = LEAF.h;
-
-interface Placed extends Rect {
-  g: GhostProposal;
-}
-
-function place(ghosts: GhostProposal[], layout: ScopeLayout | undefined, anchor: (id?: string | null) => Anchor | null): Placed[] {
-  const nodes = layout ? Object.values(layout.nodes) : [];
-  const occupied: Rect[] = [...nodes, ...(layout?.stubs ?? []), ...(layout?.tiles ?? [])];
-  const content = union(nodes);
-  const out: Placed[] = [];
-  const sorted = [...ghosts].sort((a, b) => b.confidence - a.confidence || a.key.localeCompare(b.key));
-  const free = (r: Rect) => !occupied.some((o) => overlaps(inflate(r, 18), o));
-
-  if (!content) {
-    // Empty canvas: a calm row in the middle.
-    const n = sorted.length;
-    sorted.forEach((g, i) => out.push({ g, x: -(n * W + (n - 1) * 48) / 2 + i * (W + 48), y: -H / 2, w: W, h: H }));
-    return out;
-  }
-  for (const g of sorted) {
-    const near = anchor(g.nearNodeId);
-    const cands: Pt[] = [];
-    if (near && !near.frame) {
-      const r = near.rect;
-      cands.push(
-        { x: r.x + r.w + 76, y: r.y + (r.h - H) / 2 },
-        { x: r.x + r.w + 76, y: r.y + r.h + 36 },
-        { x: r.x, y: r.y + r.h + 44 },
-        { x: r.x, y: r.y - H - 44 },
-        { x: r.x - W - 76, y: r.y + (r.h - H) / 2 },
-        { x: r.x + r.w + 76, y: r.y - H - 36 },
-      );
-    }
-    // Fallback: a column just right of everything.
-    for (let i = 0; i < 12; i++) cands.push({ x: content.x + content.w + 96, y: content.y + i * (H + 32) });
-    const pick = cands.map((p) => ({ ...p, w: W, h: H })).find(free) ?? { x: content.x + content.w + 96, y: content.y, w: W, h: H };
-    occupied.push(pick);
-    out.push({ g, ...pick });
-  }
-  return out;
-}
+const W = GW;
+const H = GH;
 
 function ghostEdge(from: Rect, to: Rect): string {
   const fc = from.x + from.w / 2;
@@ -81,15 +42,51 @@ export function Ghosts() {
   const anchor = useMemo(() => (id?: string | null) => resolveAnchor(map, layout, shown, id), [map, layout, shown]);
 
   const visible = useMemo(() => {
-    // A ghost belongs here when it relates to something visible in this scope (or the map is bare).
-    return Object.values(ghostMap).filter((g) => {
+    // One per proposal key (the model's sketch knows more than the lexicon), then:
+    // a ghost belongs here when it relates to something visible in this scope (or the map is bare).
+    const byKey = new Map<string, (typeof ghostMap)[string]>();
+    for (const g of Object.values(ghostMap)) if (!byKey.has(g.key) || g.source === 'sketch') byKey.set(g.key, g);
+    const here = [...byKey.values()].filter((g) => {
       if (map.nodes[g.key]) return false;
-      if (!g.nearNodeId) return shown === null || !Object.keys(layout?.nodes ?? {}).length;
+      // Related to nothing on the map (yet): it belongs at the top, or on a bare canvas.
+      if (!g.nearNodeId || !map.nodes[g.nearNodeId]) return shown === null || !Object.keys(layout?.nodes ?? {}).length;
       return g.nearNodeId === shown || !!anchor(g.nearNodeId);
     });
+    // Each idea once, and never one that's already on the map.
+    return dedupeGhosts(here, Object.values(map.nodes));
   }, [ghostMap, map, shown, layout, anchor]);
 
-  const placed = useMemo(() => place(visible, layout, anchor), [visible, layout, anchor]);
+  const cam = useCamera();
+  const card = useMapLocal((st) => st.card);
+  const [settled, setSettled] = useState(0);
+  useEffect(() => cam?.onSettle(() => setSettled((n) => n + 1)), [cam]);
+  const slots = useRef<Slots>(new Map());
+  const prev = useRef<{ scope: string; spots: Map<string, Rect> }>({ scope: '', spots: new Map() });
+
+  const placed = useMemo((): GhostSpot[] => {
+    const key = scopeKey(shown);
+    const nodes = layout ? Object.values(layout.nodes) : [];
+    const content = union(nodes);
+    if (!content) return placeOnBareCanvas(visible, slots.current);
+    if (prev.current.scope !== key) prev.current = { scope: key, spots: new Map() };
+    const head = layout?.frame ? [{ x: layout.frame.x, y: layout.frame.y, w: layout.frame.w, h: 72 }] : [];
+    const out = placeOnMap({
+      ghosts: visible,
+      obstacles: [...nodes, ...(layout?.stubs ?? []), ...(layout?.tiles ?? []), ...(layout?.shelf ?? []), ...head, ...(card ? [card] : [])],
+      lines: (layout?.edges ?? []).flatMap((e) => e.pts.slice(1).map((b, i) => ({ x: Math.min(e.pts[i].x, b.x), y: Math.min(e.pts[i].y, b.y), w: Math.abs(e.pts[i].x - b.x) || 1, h: Math.abs(e.pts[i].y - b.y) || 1 }))),
+      content,
+      anchorOf: (g) => {
+        const at = anchor(g.nearNodeId);
+        return at && !at.frame ? at.rect : null;
+      },
+      safe: cam?.safeWorld() ?? null,
+      prev: prev.current.spots,
+    });
+    prev.current.spots = new Map(out.map((p) => [p.g.key, { x: p.x, y: p.y, w: p.w, h: p.h }]));
+    return out;
+    // Re-place when the camera settles too, so ghosts follow into view.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, layout, anchor, card, cam, settled, shown]);
 
   useEffect(() => {
     if (!placed.length) return;

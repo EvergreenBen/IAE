@@ -136,15 +136,20 @@ function scheduleClear(ms: number): void {
   }, ms);
 }
 
-/** Keep the ghosts while the lead answers; dissolve the leftovers once it has. */
+/**
+ * Keep the ghosts while the lead answers; dissolve the leftovers once it has
+ * acted. The lead speaks first, then changes the map: the first map change
+ * after sending (real nodes taking over their ghosts) or the end of the reply,
+ * whichever comes first, starts the short fade.
+ */
 function clearAfterReply(): void {
   cancelClear();
   clearPending = true;
-  const start = useIae.getState().lead;
-  let busy = start.state !== 'idle';
+  const start = useIae.getState();
+  let busy = start.lead.state !== 'idle';
   const unsub = useIae.subscribe((s) => {
     if (s.lead.state !== 'idle') busy = true;
-    if (s.lead.lastAt !== start.lastAt || (busy && s.lead.state === 'idle')) scheduleClear(CLEAR_AFTER_REPLY_MS);
+    if (s.map !== start.map || s.lead.lastAt !== start.lead.lastAt || (busy && s.lead.state === 'idle')) scheduleClear(CLEAR_AFTER_REPLY_MS);
   });
   stopWaiting = unsub;
   fallbackTimer = setTimeout(() => scheduleClear(0), CLEAR_FALLBACK_MS);

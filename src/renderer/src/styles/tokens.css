@@ -18,7 +18,7 @@
   /* Ink — text and lines */
   --ink: #1d1c1a;
   --ink-2: #57544e; /* secondary text */
-  --ink-3: #8d8980; /* tertiary, captions, placeholders */
+  --ink-3: #736f67; /* tertiary, captions, placeholders (4.5:1 on paper: small text stays readable) */
   --ink-4: #b9b4aa; /* disabled, faint glyphs */
   --line: #e2ded5; /* hairlines, node borders */
   --line-strong: #cfc9bd; /* edges, focused borders */
@@ -53,9 +53,9 @@
   --kind-data: #b48a3e;
   --kind-queue: #4f9a9a;
   --kind-external: #9a7aa6;
-  --kind-config: #b07a6a;
+  --kind-config: #a3828f; /* dusty rose: kept clear of clay */
   --kind-infra: #7d7a72;
-  --kind-ai: #cc785c;
+  --kind-ai: #7d78b8; /* iris: clay belongs to the lead */
 
   /* Type */
   --font-ui: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;

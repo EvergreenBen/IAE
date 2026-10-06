@@ -3,6 +3,11 @@
   left: 44px;
   right: 44px;
   bottom: calc(100% + var(--s-2));
+  /* About eight rows; the rest scroll. */
+  max-height: calc(8 * 33px + 2 * var(--s-1));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   padding: var(--s-1);
   background: var(--paper-raised);
   border: 1px solid var(--line);

@@ -13,12 +13,19 @@ import { mapLocal, useMapLocal, type LayerSpec } from './mapStore';
 const DIVE_K = 2.2;
 const SURFACE_K = 0.55;
 const AUTO_FIT_IDLE = 2500;
+/** The lead's "look at this" waits this long after the user last steered (pan, zoom, dive). */
+const LEAD_DEFERS = 8000;
+const WORKING = new Set(['starting', 'thinking', 'working']);
 
 const inverse = (m: Mapping): Mapping => ({ s: 1 / m.s, mx: -m.mx / m.s, my: -m.my / m.s });
 
 export class Driver {
   private running = false;
-  private focus: { nodeId: string | null; mode: 'show' | 'enter'; tries: number } | null = null;
+  private focus: { nodeId: string | null; mode: 'show' | 'enter'; tries: number; select?: boolean } | null = null;
+  /** A scope the driver itself asked for (so the change isn't counted as the user steering). */
+  private expectScope: string | null | undefined = undefined;
+  /** Last time the user changed scope themselves (dive, breadcrumb, Esc, palette). */
+  private userNavAt = 0;
   private armedAt = 0;
   private disposed = false;
   private relayoutQueued = false;
@@ -48,7 +55,8 @@ export class Driver {
     if (shown === undefined) return;
     const prev = useMapLocal.getState().layouts[scopeKey(shown)];
     const next = await this.layoutFor(shown);
-    if (this.disposed || this.running || prev === next) return;
+    // The scope may have changed while ELK thought: never frame a scope that's no longer shown.
+    if (this.disposed || this.running || prev === next || useMapLocal.getState().shown !== shown) return;
     this.updateExtent(next);
     if (!next.bounds) return;
     const idle = performance.now() - this.cam.lastUserMove > AUTO_FIT_IDLE;
@@ -71,10 +79,12 @@ export class Driver {
     return this.cam.fit(b, l.frame ? 1.1 : 1.15);
   }
 
+  /** An open question in this scope that would show as a card (one put off with "later" doesn't need room). */
   private questionInside(scopeId: string | null): boolean {
     if (!scopeId) return false;
     const { agenda, map } = useIae.getState();
-    return agenda.some((a) => a.status === 'open' && a.nodeId && (a.nodeId === scopeId || ancestorsOf(map, a.nodeId).some((n) => n.id === scopeId)));
+    const later = useMapLocal.getState().later;
+    return agenda.some((a) => a.status === 'open' && !later.includes(a.id) && a.nodeId && (a.nodeId === scopeId || ancestorsOf(map, a.nodeId).some((n) => n.id === scopeId)));
   }
 
   private updateExtent(l: ScopeLayout) {
@@ -89,11 +99,40 @@ export class Driver {
 
   // ── camera requests from the lead / palette / crew ─────────────────────────
 
+  /** The store's scope changed; if the driver didn't ask for it, the user is steering. */
+  noteScope(scopeId: string | null) {
+    if (this.expectScope !== undefined && scopeId === this.expectScope) this.expectScope = undefined;
+    else this.userNavAt = performance.now();
+  }
+
+  private steeredRecently(): boolean {
+    return performance.now() - Math.max(this.cam.lastUserMove, this.userNavAt) < LEAD_DEFERS;
+  }
+
+  /** Builders at work outside `nodeId`'s subtree: diving in would hide them. */
+  private busyElsewhere(nodeId: string): boolean {
+    const { agents, map } = useIae.getState();
+    return Object.values(agents).some((a) => a.role !== 'lead' && WORKING.has(a.status) && a.nodeId && a.nodeId !== nodeId && !ancestorsOf(map, a.nodeId).some((n) => n.id === nodeId));
+  }
+
+  private setScope(target: string | null) {
+    this.expectScope = target;
+    ui.setScope(target);
+  }
+
   onCameraRequest(req: CameraRequest) {
     const s = useIae.getState();
+    if (req.source === 'lead') {
+      if (this.steeredRecently()) {
+        // The user is looking somewhere: don't take the camera. Point, if it's on screen.
+        if (req.nodeId && s.map.nodes[req.nodeId]) mapLocal.highlight(req.nodeId);
+        return;
+      }
+      if (req.mode === 'enter' && req.nodeId && this.busyElsewhere(req.nodeId)) req = { ...req, mode: 'show' };
+    } else this.userNavAt = performance.now();
     if (!req.nodeId) {
       this.focus = { nodeId: null, mode: req.mode, tries: 0 };
-      if (s.scopeId !== null) ui.setScope(null);
+      if (s.scopeId !== null) this.setScope(null);
       this.kick();
       return;
     }
@@ -102,14 +141,14 @@ export class Driver {
       // The node may be a moment away (ops and focus arrive together). Try briefly.
       const tries = (this.focus?.nodeId === req.nodeId ? this.focus.tries : 0) + 1;
       if (tries <= 4) {
-        this.focus = { nodeId: req.nodeId, mode: req.mode, tries };
+        this.focus = { nodeId: req.nodeId, mode: req.mode, tries, select: req.source === 'user' };
         setTimeout(() => !this.disposed && this.onCameraRequest(req), 250);
       }
       return;
     }
     const target = req.mode === 'enter' ? node.id : node.parentId;
-    this.focus = { nodeId: node.id, mode: req.mode, tries: 0 };
-    if (s.scopeId !== target) ui.setScope(target);
+    this.focus = { nodeId: node.id, mode: req.mode, tries: 0, select: req.source === 'user' };
+    if (s.scopeId !== target) this.setScope(target);
     this.kick();
   }
 
@@ -294,21 +333,23 @@ export class Driver {
     const v = this.cam.view;
     const fitK = this.fitView(L).k;
     if (!(this.cam.inView(box, 0) && v.k >= 0.8)) {
-      const k = clamp(Math.max(v.k, 1), Math.min(fitK, 1), 1.35);
+      // Close enough to read (labels show from 0.9×), not so close the neighbours vanish on a small window.
+      const k = clamp(Math.max(v.k, 0.95), Math.min(fitK, 0.95), 1.35);
       await this.cam.fly(this.cam.centerOn(box.x + box.w / 2, box.y + box.h / 2, k), 640);
     }
+    if (f.select) ui.select(f.nodeId);
     mapLocal.highlight(f.nodeId);
   }
 
   /**
-   * A question arrived about something in this scope: if it will need the
-   * margin, ease the camera to make room (only when the user isn't steering).
+   * Questions in this scope changed: make room in the margin for a new card, or
+   * give the room back once it's answered or put off (only when the user isn't steering).
    */
   makeRoom() {
     const shown = useMapLocal.getState().shown;
     if (shown === undefined || shown === null || this.running) return;
     const L = useMapLocal.getState().layouts[scopeKey(shown)];
-    if (!L?.frame || !this.questionInside(shown)) return;
+    if (!L?.frame) return;
     if (performance.now() - this.cam.lastUserMove < AUTO_FIT_IDLE) return;
     const to = this.fitView(L);
     const v = this.cam.view;

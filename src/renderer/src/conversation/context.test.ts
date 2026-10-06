@@ -53,10 +53,24 @@ describe('answersQuestion', () => {
     expect(answersQuestion('Keep the cookie sessions for now, mobile is far off and I do not want to rework login', q)).toBe(true);
     expect(answersQuestion("let's do short-lived tokens with refresh", q)).toBe(true);
     expect(answersQuestion('yes', q)).toBe(true);
+    expect(answersQuestion('tokens are fine', q)).toBe(true);
+    expect(answersQuestion('move it to short-lived tokens, I think, since the mobile app is coming soon', q)).toBe(true);
   });
   it('leaves new requests untied', () => {
     expect(answersQuestion('add a billing module with stripe checkout and a webhook handler', q)).toBe(false);
     expect(answersQuestion('anything', null)).toBe(false);
     expect(answersQuestion('  ', q)).toBe(false);
+  });
+  it('does not treat any short remark as an answer', () => {
+    const cache = item('c', 0.9, { prompt: 'Cache sessions in Postgres or Redis?', options: ['Postgres', 'Redis'] });
+    expect(answersQuestion('show me the backend', cache)).toBe(false);
+    expect(answersQuestion('what does Auth do', q)).toBe(false);
+    expect(answersQuestion('Redis', cache)).toBe(true);
+  });
+  it('answer-like openers count only in short replies', () => {
+    expect(answersQuestion("Let's plan the offline outbox next", q)).toBe(false);
+    expect(answersQuestion('no, show me the jobs first please', q)).toBe(false);
+    expect(answersQuestion('the first one', q)).toBe(true);
+    expect(answersQuestion('no', q)).toBe(true);
   });
 });

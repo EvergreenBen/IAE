@@ -51,7 +51,8 @@ export function useConversationKeys(): void {
 
       if (isMod(e) && !e.altKey && !e.shiftKey) {
         if (e.key === 'j' || e.key === 'J') {
-          if (s.paletteOpen) return;
+          // The lens and palette sit above the transcript: ⌘J there would open a sheet Esc can't see.
+          if (s.paletteOpen || s.openFile) return;
           e.preventDefault();
           ui.setTranscript(!s.transcriptOpen);
           if (s.transcriptOpen) focusIntentLine();

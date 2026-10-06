@@ -59,6 +59,12 @@ export function MapView() {
     }
     driver.kick();
   }, [driver, scopeId, root]);
+  const lastScope = useRef(scopeId);
+  useEffect(() => {
+    if (!driver || lastScope.current === scopeId) return;
+    lastScope.current = scopeId;
+    driver.noteScope(scopeId);
+  }, [driver, scopeId]);
 
   // Camera requests ("look at this").
   const camReq = useIae((st) => st.camera);
@@ -79,11 +85,17 @@ export function MapView() {
 
   // Questions may need room in the margin of a framed scope.
   const openQs = useIae((st) => st.agenda.filter((a) => a.status === 'open').map((a) => `${a.id}:${a.nodeId}`).join(','));
+  const later = useMapLocal((st) => st.later.join(','));
+  const seenQs = useRef('');
   useEffect(() => {
-    if (!driver || !openQs) return;
+    const key = `${openQs}|${later}`;
+    if (!driver || key === seenQs.current) return;
+    const first = !seenQs.current;
+    seenQs.current = key;
+    if (first && !openQs) return;
     const t = setTimeout(() => driver.makeRoom(), 60);
     return () => clearTimeout(t);
-  }, [driver, openQs]);
+  }, [driver, openQs, later]);
 
   // Real fonts change text widths: measure again once they're in.
   useEffect(() => {

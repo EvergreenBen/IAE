@@ -51,6 +51,7 @@ export function IntentLine() {
   const mic = useIae((s) => s.voice.mic);
   const loadProgress = useIae((s) => s.voice.loadProgress);
   const handsFree = useIae((s) => s.settings.voice.handsFree);
+  const leadName = useIae((s) => s.settings.leadName || 'Archie');
 
   const isSlash = text.startsWith('/');
   const slashQuery = isSlash ? text.slice(1).split(/\s/)[0] : '';
@@ -192,7 +193,7 @@ export function IntentLine() {
             onBlur={() => setFocused(false)}
             spellCheck={false}
             autoComplete="off"
-            aria-label="Talk to Archie"
+            aria-label={`Talk to ${leadName}`}
           />
           {interim && !text && (
             <div ref={interimBox} className={styles.interim} aria-live="polite">

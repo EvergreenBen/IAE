@@ -82,28 +82,51 @@ const Token = memo(function Token({ agent, at, index, perm }: { agent: AgentInfo
     >
       <div className={s.ov}>
         <div className={s.slot} style={{ transform: `translate(${-11 - index * 24}px, -11px)` }}>
-          <button
-            type="button"
-            className={s.token}
-            data-nopan
-            data-agent={agent.id}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (agent.nodeId) ui.select(at.frame ? null : at.id);
-            }}
-          >
-            <CrewMark hue={agent.hue} name={agent.name} size={22} state={state} />
-            <span className={s.tip}>
-              <span className={s.tipName}>{agent.name}</span>
-              <span className={s.tipTask}>{agent.activity ?? agent.task}</span>
-            </span>
-          </button>
+          <div className={s.agent} data-nopan>
+            <button
+              type="button"
+              className={s.token}
+              data-agent={agent.id}
+              aria-label={`${agent.name}: ${agent.activity ?? agent.task}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (agent.nodeId) ui.select(at.frame ? null : at.id);
+              }}
+            >
+              <CrewMark hue={agent.hue} name={agent.name} size={22} state={state} />
+            </button>
+            <AgentCard agent={agent} className={s.tip} />
+          </div>
           <AnimatePresence>{perm && index === 0 && <Permission key={perm.id} perm={perm} />}</AnimatePresence>
         </div>
       </div>
     </motion.div>
   );
 });
+
+/**
+ * What a builder is doing, and a quiet way to stop it. Shown on hover (or
+ * keyboard focus) of its token, on the map and in the chrome.
+ */
+export function AgentCard({ agent, where, className }: { agent: AgentInfo; where?: string | null; className?: string }) {
+  const live = agent.status !== 'done' && agent.status !== 'failed' && agent.status !== 'stopped';
+  const doing = agent.status === 'waiting' ? 'Waiting on you' : agent.status === 'done' ? (agent.result ?? 'Done') : agent.task;
+  return (
+    <span className={`${s.card} ${className ?? ''}`} onClick={(e) => e.stopPropagation()}>
+      <span className={s.tipName}>
+        {agent.name}
+        {where && <span className={s.tipWhere}> · {where}</span>}
+      </span>
+      <span className={s.tipTask}>{doing}</span>
+      {live && agent.activity && agent.activity !== agent.task && <span className={s.tipActivity}>{agent.activity}</span>}
+      {live && (
+        <button type="button" className={s.stop} onClick={() => void bridge.stopAgent(agent.id)}>
+          Stop {agent.name}
+        </button>
+      )}
+    </span>
+  );
+}
 
 function permissionText(p: PermissionRequest): { verb: string; code?: string } {
   const sum = p.summary.trim().replace(/\?$/, '');

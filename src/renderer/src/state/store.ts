@@ -66,6 +66,8 @@ export interface CameraRequest {
   nodeId: string | null;
   mode: 'show' | 'enter';
   seq: number;
+  /** Who asked: the lead ("look at this") defers to a user who is steering; a user's request also selects the node. */
+  source?: 'lead' | 'user';
 }
 
 export interface IaeState {
@@ -113,6 +115,9 @@ export interface IaeState {
   paletteOpen: boolean;
   transcriptOpen: boolean;
 }
+
+/** Lexicon ghosts live beside sketch ghosts with the same proposal key. */
+const lexKey = (key: string) => `lex:${key}`;
 
 const MAX_STEPS = 80;
 const MAX_TOUCHES = 60;
@@ -180,12 +185,21 @@ export function reduce(s: IaeState, e: EngineEvent): Partial<IaeState> {
 
     case 'map/ops': {
       const map = applyOps(s.map, e.ops);
-      // Ownership can change when nodes gain/lose paths — reassign.
-      const pathsTouched = e.ops.some((o) => o.op === 'removeNode' || o.op === 'moveNode' || (o.op === 'upsertNode' && o.node.paths));
+      // Ownership can change when nodes gain/lose paths or move in the tree (depth decides ties) — reassign.
+      const pathsTouched = e.ops.some(
+        (o) =>
+          o.op === 'removeNode' ||
+          o.op === 'moveNode' ||
+          (o.op === 'upsertNode' && (!!o.node.paths || (o.node.parentId !== undefined && !!s.map.nodes[o.node.id] && s.map.nodes[o.node.id].parentId !== o.node.parentId))),
+      );
       const files = pathsTouched ? assignFiles(map, s.files) : s.files;
       // Ghosts that just became real stop being ghosts.
       const ghosts = { ...s.ghosts };
-      for (const o of e.ops) if (o.op === 'upsertNode') delete ghosts[o.node.id];
+      for (const o of e.ops)
+        if (o.op === 'upsertNode') {
+          delete ghosts[o.node.id];
+          delete ghosts[lexKey(o.node.id)];
+        }
       const scopeId = s.scopeId && !map.nodes[s.scopeId] ? null : s.scopeId;
       const selectedNodeId = s.selectedNodeId && !map.nodes[s.selectedNodeId] ? null : s.selectedNodeId;
       return { map, files, ghosts, scopeId, selectedNodeId };
@@ -242,10 +256,11 @@ export function reduce(s: IaeState, e: EngineEvent): Partial<IaeState> {
       return { decisions: [...s.decisions, e.decision] };
 
     case 'focus':
-      return { camera: { nodeId: e.nodeId, mode: e.mode, seq: ++cameraSeq } };
+      return { camera: { nodeId: e.nodeId, mode: e.mode, seq: ++cameraSeq, source: 'lead' } };
 
     case 'ghost/proposals': {
-      // Sketch proposals replace previous sketch proposals; lexicon ghosts stay.
+      // Sketch proposals replace previous sketch proposals; lexicon ghosts stay
+      // (under their own keys, so neither source hides the other; the map dedupes).
       const ghosts: Record<string, GhostProposal> = {};
       for (const [k, g] of Object.entries(s.ghosts)) if (g.source === 'lexicon') ghosts[k] = g;
       for (const p of e.proposals) if (!s.map.nodes[p.key]) ghosts[p.key] = p;
@@ -282,7 +297,8 @@ export const ui = {
     useIae.setState({ selectedNodeId });
   },
   openFile(openFile: string | null) {
-    useIae.setState({ openFile });
+    // The lens takes over from the transcript (one sheet at a time, so Esc always closes what you see).
+    useIae.setState(openFile ? { openFile, transcriptOpen: false } : { openFile });
   },
   toggleMeaning() {
     useIae.setState((s) => ({ meaning: !s.meaning }));
@@ -294,7 +310,7 @@ export const ui = {
     useIae.setState({ transcriptOpen });
   },
   focus(nodeId: string | null, mode: 'show' | 'enter' = 'show') {
-    useIae.setState({ camera: { nodeId, mode, seq: ++cameraSeq } });
+    useIae.setState({ camera: { nodeId, mode, seq: ++cameraSeq, source: 'user' } });
   },
   voice(patch: Partial<VoiceState>) {
     useIae.setState((s) => ({ voice: { ...s.voice, ...patch } }));
@@ -302,8 +318,8 @@ export const ui = {
   setLexiconGhosts(ghosts: GhostProposal[]) {
     useIae.setState((s) => {
       const next: Record<string, GhostProposal> = {};
-      for (const [k, g] of Object.entries(s.ghosts)) if (g.source === 'sketch') next[k] = g;
-      for (const g of ghosts) if (!s.map.nodes[g.key] && !next[g.key]) next[g.key] = g;
+      for (const [k, g] of Object.entries(s.ghosts)) if (g.source !== 'lexicon') next[k] = g;
+      for (const g of ghosts) if (!s.map.nodes[g.key]) next[lexKey(g.key)] = g;
       return { ghosts: next };
     });
   },

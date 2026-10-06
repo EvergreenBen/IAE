@@ -6,6 +6,7 @@ import { boundaryEdges, childrenOf, liftedEdges } from '@shared/map';
 import type { ArchMap, EdgeKind, FileEntry, NodeKind } from '@shared/model';
 import { inflate, labelPoint, roundedPath, simplify, union, type Pt, type Rect } from './geometry';
 import { CONTAINER, FRAME_PAD, LEAF, STUB_H, TILE, edgeStyle, scopeKey, type EdgeRoute, type FileChip, type NodeBox, type ScopeLayout, type Stub } from './layoutTypes';
+import { labelTiers } from './edgeLabels';
 import { runElk } from './elk';
 import { FONT_MONO, textWidth } from './measure';
 
@@ -266,6 +267,11 @@ async function compute(input: ScopeInput): Promise<ScopeLayout> {
       }
       edges.push({ id: src.id, from: src.from, to: src.to, d: roundedPath(pts, 10), pts, kinds: src.kinds, style: edgeStyle(src.kinds), label, stub: src.stub });
     }
+    // Model order is priority: ELK returns edges in its own order.
+    const rank = new Map(input.edges.map((e, i) => [e.id, i]));
+    const labelled = edges.filter((e) => e.label).sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+    const tiers = labelTiers(labelled.map((e) => ({ id: e.id, ...e.label! })));
+    for (const e of labelled) e.label!.tier = tiers.get(e.id);
   }
 
   // ── leaf: file tiles ────────────────────────────────────────────────────
