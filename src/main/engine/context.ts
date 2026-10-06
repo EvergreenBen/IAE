@@ -6,6 +6,7 @@
 
 import { describeMap } from '../../shared/map';
 import type { AgendaItem, ArchMap, Decision } from '../../shared/model';
+import { isOwnCall, plainRationale } from './agenda';
 import { describeChanges } from './mapdiff';
 import type { LeadEvent, Workspace } from './workspace';
 
@@ -29,18 +30,30 @@ function viewLine(ws: Workspace): string {
   return `looking at: ${bits.join(' · ')}`;
 }
 
-export function agendaLine(item: AgendaItem, agentName: (id: string) => string, onScreen = false): string {
+export function agendaLine(item: AgendaItem, agentName: (id: string) => string, onScreen = false, askedAloud = false): string {
   const bits = [`[${item.id}] ${item.kind}`];
   if (item.nodeId) bits.push(`on ${item.nodeId}`);
   if (item.blocking?.length) bits.push(`BLOCKING ${item.blocking.map(agentName).join(', ')}`);
   let line = `- ${bits.join(' ')}: "${item.prompt}"`;
   if (item.options?.length) line += ` options: ${item.options.join(' | ')}`;
-  if (onScreen) line += ' (the card on screen)';
+  const marks = [onScreen ? 'the card on screen: the person can see it, so don\'t restate it' : '', askedAloud ? 'you already asked it out loud' : ''].filter(Boolean);
+  if (marks.length) line += ` (${marks.join('; ')})`;
   return line;
 }
 
 export function decisionLine(d: Decision): string {
-  return `- ${clip(d.title, 90)}${d.rationale ? ` (${clip(d.rationale, 90)})` : ''}${d.nodeId ? ` [${d.nodeId}]` : ''}`;
+  const why = plainRationale(d);
+  return `- ${clip(d.title, 90)}${why ? ` (${clip(why, 90)})` : ''}${d.nodeId ? ` [${d.nodeId}]` : ''}`;
+}
+
+/** Recorded decisions, split by who made them, so recall stays honest ("you chose…" vs "I went with…"). */
+export function decisionsSection(ds: Decision[]): string[] {
+  const theirs = ds.filter((d) => !isOwnCall(d));
+  const mine = ds.filter(isOwnCall);
+  const out: string[] = [];
+  if (theirs.length) out.push(`the person decided (don't re-ask):\n${theirs.map(decisionLine).join('\n')}`);
+  if (mine.length) out.push(`you decided on your own (your calls, not theirs: recall them as "I went with…", never "we decided"):\n${mine.map(decisionLine).join('\n')}`);
+  return out;
 }
 
 export interface MapSeen {
@@ -62,6 +75,8 @@ export interface ContextInput {
   /** One-time notes for this turn ("Your name is now Juniper"). */
   notes?: string[];
   kind?: TurnKind;
+  /** The lead already asked this item's question out loud in an earlier turn. */
+  askedAloud?: (item: AgendaItem) => boolean;
 }
 
 /** The map part of the context, and whether it was the whole map. */
@@ -86,10 +101,9 @@ export function buildContext(i: ContextInput): { text: string; fullMap: boolean 
   lines.push(viewLine(ws));
   lines.push(crew.length ? `crew:\n${crew.map((c) => `- ${c}`).join('\n')}${i.slots ? `\n${i.slots}` : ''}` : 'crew: nobody working');
   const open = ws.agenda.open();
-  lines.push(open.length ? `open agenda (top first):\n${open.map((it, n) => agendaLine(it, agentName, n === 0)).join('\n')}` : 'open agenda: none');
+  lines.push(open.length ? `open agenda (top first):\n${open.map((it, n) => agendaLine(it, agentName, n === 0, i.askedAloud?.(it))).join('\n')}` : 'open agenda: none');
   if (i.withDecisions) {
-    const ds = ws.agenda.allDecisions().slice(-12);
-    if (ds.length) lines.push(`decided so far (don't re-ask):\n${ds.map(decisionLine).join('\n')}`);
+    lines.push(...decisionsSection(ws.agenda.allDecisions().slice(-12)));
   }
   const map = mapSection(ws, i.seen);
   lines.push(map.text);

@@ -209,6 +209,14 @@ try {
   if (!flag('--skip-build')) {
     mark('delegate a tiny build');
     const touched = waitFor((e) => e.type === 'files/touched' && /README\.md$/i.test(e.path), 240_000);
+    // A card written while the builder works ("Ada is writing…") must not outlive it.
+    const started = waitFor((e) => e.type === 'agent/upsert' && e.agent.role === 'builder' && e.agent.status === 'starting', 60_000);
+    let staleCard = null;
+    void started.then((e) => {
+      if (!e) return;
+      staleCard = engine.project?.ws.agenda.ask({ prompt: 'Should the README also credit the recipe authors?', why: `${e.agent.name} is writing the README now. Credits are a taste call.`, priority: 0.1 });
+      if (staleCard) engine.project.ws.agenda.addBlocker(staleCard.id, e.agent.id);
+    });
     const finished = waitFor((e) => e.type === 'agent/upsert' && e.agent.role === 'builder' && ['done', 'failed'].includes(e.agent.status), 300_000);
     // The lead's report on the finished build: the first reply that mentions it after it's done.
     let doneAt = Infinity;
@@ -219,6 +227,15 @@ try {
     check(!!t, `files/touched README.md (${t?.action ?? 'none'})`);
     const f = await finished;
     check(f?.agent.status === 'done', `builder finished: ${f?.agent.status ?? 'timeout'} ${f?.agent.result?.slice(0, 100) ?? ''}`);
+    await new Promise((r) => setTimeout(r, 300));
+    if (staleCard) {
+      const after = engine.project?.ws.agenda.get(staleCard.id);
+      const ok = !!after && !after.blocking?.length && after.why === 'Credits are a taste call.';
+      check(ok, `finished builder released from its card: blocking=[${after?.blocking ?? ''}] why="${after?.why ?? ''}"`);
+      engine.project?.ws.agenda.dismiss(staleCard.id);
+    }
+    const perms = timeline.filter((l) => l.includes('permission/request'));
+    check(perms.every((l) => !/: Run cd\b/.test(l)), `permission cards show the real command (${perms.length} asked${perms.length ? `: ${perms.map((l) => l.split('Bash: ')[1] ?? l).join(' | ').slice(0, 200)}` : ''})`);
     const readme = join(snap.project.root, 'README.md');
     check(existsSync(readme) && /hello/i.test(readFileSync(readme, 'utf8')), 'README.md exists and says hello');
     const r = await report;

@@ -11,8 +11,10 @@
 //   node scripts/converse.mjs idle                # c. never-idle: build + pulse + ask_architect
 //   node scripts/converse.mjs bargein             # d. interrupt mid-reply + follow-up
 //   node scripts/converse.mjs resume              # e. close + reopen (needs a prior climbing run: --project DIR)
-//   node scripts/converse.mjs sketch              # sketcher latency + proposal quality
+//   node scripts/converse.mjs sketch              # sketcher latency + proposal quality, then one growing utterance
+//                                                 # (--grow-only: just the growing utterance; --no-grow: skip it)
 //   node scripts/converse.mjs rename              # lead renamed in Settings mid-session
+//   node scripts/converse.mjs recall              # talk past an open card (repeats?), then reopen: who decided what
 //   node scripts/converse.mjs climbing --out DIR  # where transcripts go (default: out/converse/<stamp>)
 //
 // The engine is bundled with esbuild (dependencies external) into out/converse/engine-<pid>.mjs.
@@ -149,10 +151,12 @@ class Run {
         else this.line(`  ✓ card closed [${e.id}] "${it?.prompt?.slice(0, 60) ?? ''}"`);
         break;
       }
-      case 'decision/add':
-        if (cur) cur.decisions.push(e.decision.title);
-        else this.line(`  ◆ decision: ${e.decision.title}`);
+      case 'decision/add': {
+        const d = `${e.decision.title}${e.decision.rationale ? ` (${e.decision.rationale})` : ''}`;
+        if (cur) cur.decisions.push(d);
+        else this.line(`  ◆ decision: ${d}`);
         break;
+      }
       case 'focus':
         if (cur) cur.focus.push(`${e.nodeId ?? 'top'}:${e.mode}`);
         break;
@@ -213,6 +217,7 @@ class Run {
         focus: [],
         usage: null,
         prompt: '',
+        cards: p.ws.agenda.open().filter((i) => !i.blocking?.length).map((i) => ({ id: i.id, prompt: i.prompt, createdAt: i.createdAt })),
       };
       self.cur = turn;
       self.turns.push(turn);
@@ -302,9 +307,37 @@ class Run {
     if (turn.mapOps.length) this.line(`    map: ${summarizeOps(turn.mapOps)}`);
     if (turn.decisions.length) this.line(`    decisions: ${turn.decisions.join(' · ')}`);
     if (turn.closed.length) this.line(`    closed: ${turn.closed.join(', ')}`);
+    this.checkRepeats(turn);
     const waiters = this.pendingTurnWaiters ?? [];
     this.pendingTurnWaiters = [];
     for (const w of waiters) w(turn);
+  }
+
+  /**
+   * Did this turn ask an open card's question again (a card raised in an
+   * earlier turn)? Looser than the engine's guard (which trims only near-verbatim
+   * repeats): this measures the habit. "raw" is what the model wrote, "spoken"
+   * what was said after the guard.
+   */
+  checkRepeats(turn) {
+    this.spoken ??= [];
+    const raw = turn.blocks.filter((b) => b.type === 'text').map((b) => b.text).join(' ');
+    const qs = (t) => (t || '').split(/(?<=[.!?])\s+/).filter((x) => x.trim().endsWith('?'));
+    const hit = (q) =>
+      turn.cards.find(
+        (c) => sim(q, c.prompt) >= 0.5 || this.spoken.some((p) => p.at >= c.createdAt && sim(p.text, c.prompt) >= 0.3 && sim(q, p.text) >= 0.6),
+      );
+    const asksOpen = /what'?s (next|left)|left to decide|remind me|what was the question/i.test(turn.body);
+    if (turn.kind !== 'pulse' && !asksOpen) {
+      for (const [where, text] of [['raw', raw], ['spoken', turn.text]]) {
+        const q = qs(text).find(hit);
+        if (q) {
+          turn.repeats = { ...(turn.repeats ?? {}), [where]: q };
+          this.line(`    ↺ ${where} repeats card [${hit(q).id}]: "${q}"`);
+        }
+      }
+    }
+    for (const q of qs(turn.text)) this.spoken.push({ text: q, at: Date.now() });
   }
 
   /** The next lead turn that finishes (any kind). */
@@ -374,6 +407,26 @@ class Run {
   }
 }
 
+const STOP = new Set(
+  `a an the to of for in on at by with and or but if so then than as is are was were be been being do does did done it its this that these those there here we you they i i'd i'll i'm me my your their them our should would could can will may might must need needs want wants go going keep use just still now also too have has had get got make made one first which what how when where who why sound sounds right ok okay yes no sure call your quick question decide choose either`.split(/\s+/),
+);
+function words2(t) {
+  const out = new Set();
+  for (const w of String(t).toLowerCase().split(/[^a-z0-9']+/)) {
+    const x = w.replace(/^'+|'+$/g, '');
+    if (x && !STOP.has(x)) out.add(x.length > 3 ? x.replace(/(?<!s)s$/, '') : x);
+  }
+  return out;
+}
+function sim(a, b) {
+  const x = words2(a);
+  const y = words2(b);
+  if (!x.size || !y.size) return 0;
+  let n = 0;
+  for (const w of x) if (y.has(w)) n++;
+  return (2 * n) / (x.size + y.size);
+}
+
 function summarizeOps(ops) {
   const nodes = ops.filter((o) => o.op === 'upsertNode').map((o) => `${o.node.parentId ? o.node.parentId + '/' : ''}${o.node.id}${o.node.label ? `("${o.node.label}")` : ''}${o.node.status ? `:${o.node.status}` : ''}${o.node.paths?.length ? `{${o.node.paths.join(',')}}` : ''}`);
   const edges = ops.filter((o) => o.op === 'upsertEdge').map((o) => `${o.edge.from}→${o.edge.to}`);
@@ -436,6 +489,9 @@ function scorecard(run) {
   }
   const pulses = run.turns.filter((t) => t.kind === 'pulse');
   const evs = run.turns.filter((t) => t.kind === 'events');
+  const rep = run.turns.filter((t) => t.repeats);
+  lines.push(`card repeats (open card asked again in a later turn): written ${rep.filter((t) => t.repeats.raw).length}, spoken ${rep.filter((t) => t.repeats.spoken).length}`);
+  issues += rep.filter((t) => t.repeats.spoken).length;
   lines.push(`unprompted: ${pulses.length} pulses (${pulses.filter((t) => !t.text).length} silent), ${evs.length} event turns (${evs.filter((t) => !t.text).length} silent)`);
   if (pulses.length > 1) {
     const gaps = pulses.slice(1).map((t, i) => Math.round((t.startAt - pulses[i].startAt) / 1000));
@@ -663,6 +719,44 @@ const SCENARIOS = {
     await engine.setSettings({ leadName: 'Archie' });
   },
 
+  /**
+   * Honest recall: talk past the open card several times (does Archie keep
+   * asking it?), let Archie make a technical call of its own, answer a card,
+   * then reopen the project and ask who decided what.
+   */
+  async recall(run, engine, sandbox) {
+    const snap = await engine.createProject('Crag Night', sandbox);
+    const root = snap.project.root;
+    run.projectRoot = root;
+    writeFileSync(join(run.dir, 'project-root.txt'), root);
+    await greeting(run);
+    await run.say('Crag Night is our climbing gym. Members check in at the front desk and see which routes are up on the walls.');
+    // Requests that neither answer the card nor invite a new one.
+    await run.say('Show me where the routes live.');
+    await run.say('What does the route board do, in one line?');
+    await run.say('Setters reset one wall every Tuesday, usually about twelve new routes.');
+    const started = run.waitFor((e) => e.type === 'agent/upsert' && e.agent.role === 'builder' && e.agent.status === 'starting', 60_000);
+    await run.say("Let's get the route board started.");
+    if (await started) {
+      await sleep(6000);
+      for (const b of run.briefs) await engine.stopAgent(b.id).catch(() => {});
+      await sleep(500);
+      for (const it of engine.project.ws.agenda.open())
+        run.line(`── after stop, card [${it.id}] blocking=[${(it.blocking ?? []).join(',')}] why=${JSON.stringify(it.why ?? null)}`);
+    }
+    await run.say("Members use it on their phones in the gym where the wifi is patchy. How logged sends get stored and synced is your call, I don't mind.");
+    const top = run.topCard();
+    if (top) await run.answer(top.id, top.options?.[0] ?? 'yes');
+    const ds = engine.project.ws.agenda.allDecisions();
+    run.line(`── decisions on disk: ${ds.map((d) => `${d.title}${d.rationale ? ` (${d.rationale})` : ''}`).join(' · ') || '(none)'}`);
+    run.line('── close and reopen');
+    await engine.closeProject();
+    await engine.openProject(root);
+    await greeting(run);
+    await run.say('Remind me what has been decided so far, and who decided each thing.');
+    await sleep(2000);
+  },
+
   /** Sketcher: latency and quality on typical partial sentences. */
   async sketch(run, engine, sandbox) {
     const copy = join(sandbox, 'recipe-box');
@@ -672,6 +766,7 @@ const SCENARIOS = {
     const mapSrc = opt('--map');
     if (mapSrc) writeFileSync(join(copy, '.iae/map.json'), readFileSync(mapSrc));
     writeFileSync(join(copy, '.iae/state.json'), JSON.stringify({ createdAt: Date.now(), cartographedAt: Date.now(), isNew: false }));
+    if (argv.includes('--grow-only')) return sketchGrow(run, engine, sandbox);
     await engine.openProject(copy);
     await greeting(run);
     const nodes = Object.values(engine.project.ws.map.nodes).map((n) => `${n.id}(${n.label})`);
@@ -702,8 +797,54 @@ const SCENARIOS = {
     }
     const ok = stats.filter((x) => x != null).sort((a, b) => a - b);
     run.line(`sketcher latency (incl. 300ms debounce): median ${ok[Math.floor(ok.length / 2)]}ms, max ${ok.at(-1)}ms, ${stats.length - ok.length} timeouts`);
+    if (!argv.includes('--no-grow')) await sketchGrow(run, engine, sandbox);
   },
 };
+
+/**
+ * One utterance that grows the way speech-to-text interims do (same draft id,
+ * a longer text about every second). Ghosts must accumulate: what the first
+ * words implied is still on the map when the person presses Enter. Ghost state
+ * follows the renderer: each sketch event replaces the previous sketch ghosts.
+ */
+async function sketchGrow(run, engine, sandbox) {
+  await engine.createProject('Crag Night', sandbox);
+  await greeting(run);
+  const words = [
+    'Crag Night is an app for our climbing gym where members can book classes',
+    'and sign in with their member account,',
+    "track the routes they've climbed,",
+    'check in at the front desk by scanning a QR code at the door,',
+    'and we check their membership is still valid before letting them in.',
+  ];
+  const id = 'grow-1';
+  const events = [];
+  let ghosts = {};
+  const l = (e) => {
+    if (e.type !== 'ghost/proposals' || e.draftId !== id) return false;
+    ghosts = Object.fromEntries(e.proposals.map((p) => [p.key, p]));
+    events.push({ at: Date.now(), keys: e.proposals.map((p) => p.key) });
+    run.line(`  ghosts ← ${e.proposals.map((p) => `${p.label}[${p.key}]`).join(', ') || '[]'}`);
+    return false;
+  };
+  run.listeners.add(l);
+  let text = '';
+  const t0 = Date.now();
+  for (const w of words) {
+    text = text ? `${text} ${w}` : w;
+    run.line(`DRAFT+ "${text}"`);
+    await engine.draft(id, text);
+    await sleep(1200);
+  }
+  const tLast = Date.now();
+  await sleep(4000);
+  run.listeners.delete(l);
+  const final = Object.values(ghosts);
+  const seen = new Set(events.flatMap((e) => e.keys));
+  const dropped = [...seen].filter((k) => !ghosts[k]);
+  run.line(`grow: ${events.length} proposal events over ${Math.round((tLast - t0) / 1000)}s; at Enter ${final.length} ghosts: ${final.map((p) => p.label).join(', ')}`);
+  run.line(`grow: keys ever shown ${seen.size}, dropped before Enter: ${dropped.length ? dropped.join(', ') : 'none'}`);
+}
 
 // ── main ────────────────────────────────────────────────────────────────────
 

@@ -50,6 +50,58 @@ export const clamp01 = (n: unknown, fallback: number): number => {
   return Math.min(1, Math.max(0, v));
 };
 
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** A sentence that speaks of the builder as at work right now ("Ada is writing the scheduler now"). */
+function presentTense(name: string): RegExp {
+  const n = escapeRe(name);
+  return new RegExp(
+    [
+      `\\b(?:while|until|before|once|as soon as)\\s+${n}\\b`,
+      `\\b${n}(?:'s|’s|\\s+is|\\s+are|'ll|’ll|\\s+will\\s+be)\\s+(?:still\\s+|now\\s+|currently\\s+|already\\s+)?\\w+ing\\b`,
+      `\\b${n}(?:\\s+(?:still|now|currently))?\\s+(?:is|are|needs?|wants?|waits?|will|can't|can’t|cannot|won't|won’t|has\\s+to|keeps?|starts?|builds?|writes?|works?|runs?|migrates?|wires?|adds?|sets?\\s+up)\\b`,
+      `\\b${n}(?:'s|’s)\\s+(?:still|now|currently|about|waiting|blocked|on\\s+it)\\b`,
+    ].join('|'),
+  );
+}
+
+/**
+ * The card's "why" once a builder has stopped or finished: sentences that talk
+ * about it as still at work go (the rest stays); nothing left means no why.
+ */
+export function whyWithout(why: string | undefined, names: string[]): string | undefined {
+  if (!why) return why;
+  const stale = names.filter(Boolean).map(presentTense);
+  if (!stale.some((re) => re.test(why))) return why;
+  const kept = why
+    .split(/(?<=[.!?;])\s+/)
+    .filter((s) => !stale.some((re) => re.test(s)))
+    .join(' ')
+    .trim();
+  return kept || undefined;
+}
+
+/** Who made a decision: the person (said it, or answered a card) or the lead on its own. */
+export type DecidedBy = 'person' | 'lead';
+
+/** "Archie's call: …" — how the lead's own calls are marked (the rationale carries it, so no schema change). */
+const OWN_CALL = /^\s*(?:[^\s:'’]{1,24} ){0,2}[^\s:'’]{1,24}['’]s call\b:?\s*/;
+
+export function ownCallRationale(leadName: string, rationale?: string): string {
+  const why = rationale?.trim().replace(OWN_CALL, '');
+  return `${leadName.trim() || 'Archie'}'s call${why ? `: ${why}` : ''}`;
+}
+
+/** True for a decision the lead made itself (not the person's choice). */
+export function isOwnCall(d: Decision): boolean {
+  return !!d.rationale && OWN_CALL.test(d.rationale);
+}
+
+/** The rationale without the "Archie's call" mark. */
+export function plainRationale(d: Decision): string | undefined {
+  return d.rationale?.replace(OWN_CALL, '').trim() || undefined;
+}
+
 export function compareAgenda(a: AgendaItem, b: AgendaItem): number {
   const ab = a.blocking?.length ? 1 : 0;
   const bb = b.blocking?.length ? 1 : 0;
@@ -65,9 +117,15 @@ export class Agenda {
     items: AgendaItem[],
     decisions: Decision[],
     private readonly sink: AgendaSink,
+    /** Builder names: none of them is at work after a restart. */
+    crewNames: string[] = [],
   ) {
-    // Builders don't survive a restart, so nothing is blocked on reload.
-    this.items = items.map((i) => (i.blocking?.length ? { ...i, blocking: [] } : i));
+    // Builders don't survive a restart, so nothing is blocked on reload, and no card says one is at work.
+    this.items = items.map((i) => {
+      if (i.status !== 'open') return i;
+      const why = whyWithout(i.why, crewNames);
+      return i.blocking?.length || why !== i.why ? { ...i, blocking: [], why } : i;
+    });
     this.decisions = decisions;
   }
 
@@ -161,11 +219,18 @@ export class Agenda {
     this.save();
   }
 
-  /** Removes an agent from every item it was blocking (it stopped or finished). */
-  releaseAgent(agentId: string): void {
+  /**
+   * An agent stopped or finished: it no longer blocks anything, and no card's
+   * "why" says it's still at work ("Ada is writing the scheduler now").
+   */
+  releaseAgent(agentId: string, name?: string): void {
     this.items = this.items.map((item) => {
-      if (item.status !== 'open' || !item.blocking?.includes(agentId)) return item;
-      const next = { ...item, blocking: item.blocking.filter((a) => a !== agentId) };
+      if (item.status !== 'open') return item;
+      const blocked = !!item.blocking?.includes(agentId);
+      const why = name ? whyWithout(item.why, [name]) : item.why;
+      if (!blocked && why === item.why) return item;
+      const next = { ...item, blocking: (item.blocking ?? []).filter((a) => a !== agentId), why };
+      if (!why) delete next.why;
       this.sink.upsert(next);
       return next;
     });
@@ -198,11 +263,17 @@ export class Agenda {
     });
   }
 
-  decide(input: { title: string; rationale?: string; nodeId?: string | null }): Decision {
+  /**
+   * Records a decision. The lead's own calls (`by: 'lead'`) are marked in the
+   * rationale ("Archie's call: …"), so later turns recall them as the lead's,
+   * not as something decided together.
+   */
+  decide(input: { title: string; rationale?: string; nodeId?: string | null; by?: DecidedBy; leadName?: string }): Decision {
+    const rationale = input.by === 'lead' ? ownCallRationale(input.leadName ?? 'Archie', input.rationale) : input.rationale?.trim().replace(OWN_CALL, '') || undefined;
     const d: Decision = {
       id: `d-${nanoid(6)}`,
       title: input.title.trim(),
-      rationale: input.rationale?.trim() || undefined,
+      rationale,
       nodeId: input.nodeId ?? null,
       at: Date.now(),
     };

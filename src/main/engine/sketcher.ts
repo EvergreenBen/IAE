@@ -1,6 +1,9 @@
 // Architecture autocomplete: a warm, minimal Haiku session turns the words the
 // person is still saying into ghost nodes. Debounced; only the latest draft
 // matters; failures are silent (the renderer's lexicon ghosts still work).
+// Each draft is sent whole, with what's already sketched for it, and the
+// ghosts shown for an utterance are the union of every answer for it: later
+// words add ghosts, they never wipe out what the first words sketched.
 
 import { query, type Query } from '@anthropic-ai/claude-agent-sdk';
 import type { EngineEvent } from '../../shared/events';
@@ -9,7 +12,7 @@ import type { ArchMap, GhostProposal, Settings } from '../../shared/model';
 import { clamp01 } from './agenda';
 import { normalizeKind } from './mapops';
 import { sketcherSystemPrompt } from './prompts';
-import { assistantText, errorText, InputQueue, leanOptions, log } from './sdk';
+import { assistantText, debug, errorText, InputQueue, leanOptions, log } from './sdk';
 
 const DEBOUNCE_MS = 300;
 const MIN_CHARS = 12;
@@ -17,6 +20,10 @@ const RECYCLE_AFTER = 20;
 const MAX_FAILURES = 3;
 const COOLDOWN_MS = 60_000;
 const REPLY_TIMEOUT_MS = 15_000;
+
+const MAX_PER_REPLY = 6;
+/** Ghosts shown for one utterance at most (the union of every draft's answer). */
+export const MAX_GHOSTS = 8;
 
 /** Robustly reads the model's JSON array into proposals that aren't on the map yet. */
 export function parseProposals(raw: string, map: ArchMap): GhostProposal[] {
@@ -33,7 +40,7 @@ export function parseProposals(raw: string, map: ArchMap): GhostProposal[] {
   const labels = new Set(Object.values(map.nodes).map((n) => n.label.toLowerCase()));
   const seen = new Set<string>();
   const out: GhostProposal[] = [];
-  for (const item of arr.slice(0, 8)) {
+  for (const item of arr.slice(0, MAX_PER_REPLY + 4)) {
     if (!item || typeof item !== 'object') continue;
     const p = item as Record<string, unknown>;
     const label = typeof p.label === 'string' ? p.label.replace(/\s+/g, ' ').trim().slice(0, 40) : '';
@@ -45,7 +52,101 @@ export function parseProposals(raw: string, map: ArchMap): GhostProposal[] {
     const connects = Array.isArray(p.connects) ? p.connects.filter((c): c is string => typeof c === 'string' && !!map.nodes[c]) : [];
     out.push({ key, label, kind: normalizeKind(p.kind) ?? 'module', nearNodeId: near, connectsTo: connects, confidence: clamp01(p.confidence, 0.6), source: 'sketch' });
   }
-  return out.slice(0, 4);
+  return out.slice(0, MAX_PER_REPLY);
+}
+
+const FILLER_WORDS = new Set(['the', 'a', 'an', 'of', 'for', 'and', '&']);
+
+/** "Route Tracking" ≈ "Route Tracker", "Class Bookings" ≈ "Class Booking", "Member Auth" ≈ "Member Authentication". */
+function stem(word: string): string {
+  return word.replace(/(ings?|ers?|ions?|s)$/, '') || word;
+}
+
+function tokens(label: string): string[] {
+  return label
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w && !FILLER_WORDS.has(w))
+    .map(stem);
+}
+
+const sameToken = (a: string, b: string): boolean => a === b || (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)));
+
+/** Two labels name the same component (word order, plurals and -ing/-er forms aside). */
+export function sameComponent(a: string, b: string): boolean {
+  const ta = tokens(a);
+  const tb = tokens(b);
+  if (!ta.length || ta.length !== tb.length) return false;
+  const rest = [...tb];
+  for (const t of ta) {
+    const i = rest.findIndex((u) => sameToken(t, u));
+    if (i === -1) return false;
+    rest.splice(i, 1);
+  }
+  return true;
+}
+
+/** The text names the component (any of its words, loosely): "meal planner" in "…plan meals…". */
+export function mentioned(label: string, text: string): boolean {
+  const words = tokens(text);
+  return tokens(label).some((t) => t.length >= 3 && words.some((w) => sameToken(t, w)));
+}
+
+/**
+ * A warm session sometimes carries a component over from the person's previous
+ * sentence. In a new sentence, a component the last one already had stays only
+ * if the new words mention it.
+ */
+export function withoutCarryover(next: GhostProposal[], previous: GhostProposal[], text: string): GhostProposal[] {
+  if (!previous.length) return next;
+  return next.filter((p) => !previous.some((q) => q.key === p.key || sameComponent(q.label, p.label)) || mentioned(p.label, text));
+}
+
+export interface MergeOptions {
+  max?: number;
+  /** Labels that are never components (the product's own name). */
+  exclude?: (string | undefined)[];
+}
+
+/**
+ * One utterance's ghosts: everything any draft of it implied so far, so later
+ * words never wipe out what earlier words sketched. A component keeps the key
+ * and label it first appeared with (no flicker); newer answers refresh its
+ * placement. Whatever has since landed on the map stops being a ghost. Over
+ * the cap, what the latest answer no longer lists goes first.
+ */
+export function mergeProposals(prev: GhostProposal[], next: GhostProposal[], map: ArchMap, opts: MergeOptions = {}): GhostProposal[] {
+  const max = opts.max ?? MAX_GHOSTS;
+  const onMap = new Set(Object.values(map.nodes).map((n) => n.label.toLowerCase()));
+  const excluded = (opts.exclude ?? []).filter((x): x is string => !!x?.trim());
+  const live = (p: GhostProposal) => !map.nodes[p.key] && !onMap.has(p.label.toLowerCase()) && !excluded.some((x) => sameComponent(x, p.label));
+  const out = prev.filter(live).map((p) => ({ ...p }));
+  const fresh = new Set<string>();
+  for (const p of next) {
+    if (!live(p)) continue;
+    const i = out.findIndex((q) => q.key === p.key || sameComponent(q.label, p.label));
+    if (i === -1) {
+      out.push(p);
+      fresh.add(p.key);
+      continue;
+    }
+    const q = out[i];
+    fresh.add(q.key);
+    out[i] = {
+      ...q,
+      kind: p.kind,
+      nearNodeId: p.nearNodeId ?? q.nearNodeId ?? null,
+      connectsTo: p.connectsTo?.length ? p.connectsTo : q.connectsTo,
+      confidence: Math.max(q.confidence, p.confidence),
+    };
+  }
+  while (out.length > max) {
+    // The least likely of those the latest answer dropped (the oldest of equals).
+    const pool = out.some((g) => !fresh.has(g.key)) ? out.filter((g) => !fresh.has(g.key)) : out;
+    const worst = pool.reduce((w, g) => (g.confidence < w.confidence ? g : w));
+    out.splice(out.indexOf(worst), 1);
+  }
+  return out;
 }
 
 /** The map as the sketcher sees it: ids, labels and the gist of each summary (to spot overlap). */
@@ -73,16 +174,24 @@ export interface SketcherDeps {
   emit: (e: EngineEvent) => void;
   settings: () => Settings;
   map: () => ArchMap;
+  /** The product's own name is never a component ("Crag Night"). */
+  projectName?: () => string;
 }
 
 export class Sketcher {
   private latest: Draft | null = null;
+  /** The ghosts shown for the current utterance (its draft id), accumulated across drafts. */
+  private shown: { draftId: string; proposals: GhostProposal[] } | null = null;
+  /** The previous utterance's ghosts (not carried into a new sentence unless it names them). */
+  private before: GhostProposal[] = [];
   private inFlight: Draft | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private session: Session | null = null;
   private used = 0;
   /** The map text this session last saw; unchanged maps aren't re-sent. */
   private sentMap = '';
+  /** The utterance this session last saw a draft of. */
+  private sentDraftId = '';
   private failures = 0;
   private pausedUntil = 0;
   private closed = false;
@@ -115,13 +224,28 @@ export class Sketcher {
     const mapText = compactMap(this.d.map());
     const nodes = mapText === this.sentMap ? 'Existing nodes: (same as before)' : `Existing nodes: ${mapText}`;
     this.sentMap = mapText;
-    const reply = await this.ask(session, `${nodes}\nSentence so far: "${draft.text}"`);
+    // The session can't tell a new utterance from a longer draft of the last one,
+    // and each message says what this utterance already has (no reliance on memory).
+    const same = this.sentDraftId === draft.draftId;
+    this.sentDraftId = draft.draftId;
+    const has = this.shown?.draftId === draft.draftId ? this.shown.proposals.map((p) => p.label) : [];
+    const reply = await this.ask(
+      session,
+      `${nodes}\n${same ? 'Same sentence, now longer' : 'New sentence'}: "${draft.text}"${has.length ? `\nAlready sketched for it: ${has.join(', ')}` : ''}`,
+    );
     this.inFlight = null;
     if (this.closed) return;
     const latest = this.latest;
     // A newer utterance replaced this one: its ghosts would be wrong.
+    debug('sketch', `${same ? '+' : 'new'} "…${draft.text.slice(-48)}" →`, reply);
     if (reply !== null && latest && latest.draftId === draft.draftId) {
-      this.d.emit({ type: 'ghost/proposals', draftId: draft.draftId, proposals: parseProposals(reply, this.d.map()) });
+      const map = this.d.map();
+      if (this.shown && this.shown.draftId !== draft.draftId) this.before = this.shown.proposals;
+      const prev = this.shown?.draftId === draft.draftId ? this.shown.proposals : [];
+      const fresh = withoutCarryover(parseProposals(reply, map), this.before, draft.text);
+      const proposals = mergeProposals(prev, fresh, map, { exclude: [this.d.projectName?.()] });
+      this.shown = { draftId: draft.draftId, proposals };
+      this.d.emit({ type: 'ghost/proposals', draftId: draft.draftId, proposals });
     }
     if (latest && latest !== draft && latest.text.length >= MIN_CHARS) void this.fire();
   }
@@ -152,7 +276,7 @@ export class Sketcher {
         model: s.sketchModel,
         thinking: { type: 'disabled' },
         tools: [],
-        systemPrompt: sketcherSystemPrompt(),
+        systemPrompt: sketcherSystemPrompt(this.d.projectName?.()),
         persistSession: false,
         permissionMode: 'dontAsk',
       },
@@ -160,6 +284,7 @@ export class Sketcher {
     const session: Session = { q, input, waiting: null, dead: false };
     this.used = 0;
     this.sentMap = '';
+    this.sentDraftId = '';
     void this.consume(session);
     return session;
   }

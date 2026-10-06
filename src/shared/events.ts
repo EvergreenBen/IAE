@@ -56,7 +56,8 @@ export type EngineEvent =
   // ── architecture autocomplete from the sketch model (lexicon ghosts are renderer-local)
   | { type: 'ghost/proposals'; draftId: string; proposals: GhostProposal[] }
   // ── builder permission prompts
-  | { type: 'permission/request'; id: string; agentId: string; tool: string; summary: string; nodeId: string | null }
+  // `detail`: the untruncated request (e.g. the whole Bash command), when the summary is clipped. Optional.
+  | { type: 'permission/request'; id: string; agentId: string; tool: string; summary: string; nodeId: string | null; detail?: string }
   | { type: 'permission/resolved'; id: string }
   // ── misc
   | { type: 'transcript/append'; entry: TranscriptEntry }

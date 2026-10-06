@@ -97,7 +97,8 @@ export class Workspace {
     };
   }
 
-  static async open(root: string, emit: (e: EngineEvent) => void): Promise<Workspace> {
+  /** `crewNames`: builder names, none of which is at work in a freshly opened project. */
+  static async open(root: string, emit: (e: EngineEvent) => void, crewNames: string[] = []): Promise<Workspace> {
     const t = Date.now();
     const store = new ProjectStore(root);
     const loaded = await store.load();
@@ -107,15 +108,20 @@ export class Workspace {
     let map = loaded.map;
     const firstOpen = !loaded.hadMap;
     if (firstOpen && scanned.length && !state.isNew) map = buildHeuristicMap(root, scanned.map((f) => f.path));
-    const agenda = new Agenda(loaded.agenda, loaded.decisions, {
-      upsert: (item) => emit({ type: 'agenda/upsert', item }),
-      remove: (id) => emit({ type: 'agenda/remove', id }),
-      decision: (decision) => emit({ type: 'decision/add', decision }),
-      persist: (items, decisions) => {
-        store.saveAgenda(items);
-        store.saveDecisions(decisions);
+    const agenda = new Agenda(
+      loaded.agenda,
+      loaded.decisions,
+      {
+        upsert: (item) => emit({ type: 'agenda/upsert', item }),
+        remove: (id) => emit({ type: 'agenda/remove', id }),
+        decision: (decision) => emit({ type: 'decision/add', decision }),
+        persist: (items, decisions) => {
+          store.saveAgenda(items);
+          store.saveDecisions(decisions);
+        },
       },
-    });
+      crewNames,
+    );
     const ws = new Workspace(root, emit, { store, map, firstOpen, notes: loaded.notes, state, transcript: loaded.transcript, agenda, scanned });
     store.saveState(state);
     if (firstOpen) store.saveMap(map);

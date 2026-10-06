@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { describeToolUse, humanCommand, projectPath, shortCommand } from './activity';
+import { commandSummary, describeToolUse, humanCommand, projectPath, shortCommand, shortenPaths, splitShell } from './activity';
+import { permissionSummary } from './crew';
 
 const ROOT = '/work/recipe-box';
 const exists = (abs: string) => abs.endsWith('existing.ts');
@@ -47,6 +48,49 @@ describe('humanCommand', () => {
     expect(humanCommand('ls -la apps')).toBe('Checking the project');
     expect(humanCommand(`node ${ROOT}/scripts/seed-database-with-example-recipes.mjs`, ROOT)).toBe('Running node seed-database-with-example…');
     expect(humanCommand('')).toBe('Running a command');
+  });
+});
+
+describe('builder commands behind a cd', () => {
+  const CRAG = '/Users/ana/Desktop/IAE Projects/Crag Night';
+  const cd = `cd "${CRAG}" && `;
+
+  it('classifies by the real command, not the cd', () => {
+    expect(humanCommand(`${cd}npm install express`, CRAG)).toBe('Installing packages');
+    expect(humanCommand(`cd ${CRAG.replace(/ /g, '\\ ')} && npx tsc --noEmit`, CRAG)).toBe('Typechecking');
+    expect(humanCommand(`cd "${CRAG}/server"; node scripts/seed.mjs`, CRAG)).toBe('Running node seed.mjs');
+    expect(humanCommand(`cd "${CRAG}"\nnpm test`, CRAG)).toBe('Running tests');
+  });
+
+  it('reads a live server check as a server check, not as the cleanup around it', () => {
+    const check = `${cd}(PORT=4123 node server/index.js > /tmp/crag.log 2>&1 &) ; sleep 2; curl -s http://localhost:4123/api/health; kill %1; rm -f /tmp/crag.log`;
+    expect(humanCommand(check, CRAG)).toBe('Checking the running server');
+    expect(humanCommand(`${cd}rm -f data/test.db && nohup node server.js > /dev/null 2>&1 & sleep 1 && curl -sf 127.0.0.1:3000/ | head -5`, CRAG)).toBe('Checking the running server');
+    expect(humanCommand(`${cd}lsof -ti:4123 | xargs kill -9; rm -rf .cache`, CRAG)).toBe('Stopping a process');
+    expect(humanCommand(`${cd}rm -rf dist && mkdir dist && node build.mjs`, CRAG)).toBe('Running node build.mjs');
+    expect(humanCommand(`${cd}rm -rf dist`, CRAG)).toBe('Removing files');
+    expect(humanCommand('curl -s https://api.stripe.com/v1/charges')).toBe('Calling a web address');
+  });
+
+  it('splits on shell operators outside quotes only', () => {
+    expect(splitShell('echo "a && b | c" && grep -c x \'y;z\' | wc -l')).toEqual(['echo "a && b | c"', "grep -c x 'y;z'", 'wc -l']);
+    expect(splitShell('node a.js > out.log 2>&1 & curl x &>/dev/null')).toEqual(['node a.js > out.log 2>&1', 'curl x &>/dev/null']);
+  });
+
+  it('permission cards show the command that really runs, with long paths shortened', () => {
+    expect(permissionSummary('Bash', { command: `${cd}npm install better-sqlite3` }, CRAG)).toBe('Run npm install better-sqlite3');
+    expect(permissionSummary('Bash', { command: `${cd}node server/index.js & sleep 2 && curl -s localhost:4123/health` }, CRAG)).toBe(
+      'Run node server/index.js & sleep 2 && curl -s localhost:4123/health',
+    );
+    expect(commandSummary(`${cd}cp /Users/ana/Downloads/exports/2026/october/members.csv data/`, CRAG, '/Users/ana')).toBe('cp ~/…/october/members.csv data/');
+    expect(commandSummary(`${cd}ls /opt/homebrew/var/postgresql@16/base/pgsql_tmp/x`, CRAG)).toBe('ls /opt/…/pgsql_tmp/x');
+    expect(commandSummary(`${cd}npm run migrate\nnpm test`, CRAG)).toBe('npm run migrate …');
+    expect(commandSummary(`cd "${CRAG}"`, CRAG)).toBe('cd .');
+    expect(permissionSummary('Write', { file_path: `${CRAG}/server/db.ts` })).toBe('Write db.ts');
+  });
+
+  it('leaves short paths and URLs alone', () => {
+    expect(shortenPaths('cat /etc/hosts && curl http://localhost:3000/a/b/c/d/e')).toBe('cat /etc/hosts && curl http://localhost:3000/a/b/c/d/e');
   });
 });
 

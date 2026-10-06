@@ -7,7 +7,7 @@ import type { EngineEvent } from '../../shared/events';
 import type { AgendaItem, AgentInfo, MapOp, ProjectSnapshot, Settings, SlashCommandInfo, ViewContext } from '../../shared/model';
 import { readProjectFile, resolveInside } from '../project/files';
 import { ATLAS_ID, Cartographer } from './cartographer';
-import { Crew } from './crew';
+import { Crew, NAME_POOL } from './crew';
 import { Lead } from './lead';
 import { explainFileText, firstSentence, listProjectCommands } from './passthrough';
 import { Pulse } from './pulse';
@@ -15,6 +15,8 @@ import { errorText, log } from './sdk';
 import { Sketcher } from './sketcher';
 import { createLeadTools, type LeadToolHost } from './tools';
 import { Workspace } from './workspace';
+
+const TAPPED = 'tapped an answer on the card';
 
 export interface SessionDeps {
   emit: (e: EngineEvent) => void;
@@ -29,6 +31,8 @@ export class ProjectSession {
   readonly pulse: Pulse;
   private cartographer: Cartographer | null = null;
   private explained = new Map<string, { mtime: number; text: string }>();
+  /** When a question was last answered (a tap or resolve_question). */
+  private lastAnswerAt = 0;
   private commands: Promise<SlashCommandInfo[]> | null = null;
 
   private constructor(
@@ -48,6 +52,11 @@ export class ProjectSession {
       messageAgent: (id, message) => this.crew.message(id, message),
       stopAgent: (id) => this.stopAgent(id, 'lead'),
       hasSpoken: () => this.lead.hasSpoken,
+      answeredThisTurn: () => {
+        const t = this.lead.currentTurn;
+        return !!t && (t.body.includes(TAPPED) || this.lastAnswerAt >= t.startedAt);
+      },
+      leadName: () => d.settings().leadName,
     };
     this.lead = new Lead({
       ws,
@@ -60,12 +69,12 @@ export class ProjectSession {
       onClaudeStatus: d.onClaudeStatus,
       onTurnEnd: (kind) => this.pulse.turnEnded(kind),
     });
-    this.sketcher = new Sketcher({ root: ws.root, emit, settings: d.settings, map: () => ws.map });
+    this.sketcher = new Sketcher({ root: ws.root, emit, settings: d.settings, map: () => ws.map, projectName: () => ws.info.name });
     this.pulse = new Pulse({ ws, lead: this.lead, working: () => this.crew.visible().map((a) => ({ id: a.id, name: a.name })) });
   }
 
   static async open(root: string, d: SessionDeps): Promise<ProjectSession> {
-    return new ProjectSession(await Workspace.open(root, d.emit), d);
+    return new ProjectSession(await Workspace.open(root, d.emit, NAME_POOL), d);
   }
 
   snapshot(): ProjectSnapshot {
@@ -147,6 +156,7 @@ export class ProjectSession {
   /** Closes a question; the builders that asked get the answer. */
   private resolve(id: string, answer: string): { item: AgendaItem; told: string[] } | null {
     const item = this.ws.agenda.answer(id, answer.trim());
+    if (item) this.lastAnswerAt = Date.now();
     return item ? { item, told: this.crew.answered(item) } : null;
   }
 
@@ -158,7 +168,7 @@ export class ProjectSession {
     this.userActive();
     this.ws.appendTranscript('user', answer, item.nodeId);
     const relayed = told.length ? `; ${told.join(' and ')} already got the answer` : '';
-    this.lead.send('user', `(tapped an answer on the card [${item.id}] "${item.prompt}" — it's closed${relayed}; record the choice with decide and act on it) ${answer}`);
+    this.lead.send('user', `(${TAPPED} [${item.id}] "${item.prompt}" — it's closed${relayed}; record the choice with decide, by "person", and act on it) ${answer}`);
   }
 
   dismiss(id: string): void {

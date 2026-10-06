@@ -57,6 +57,12 @@ describe('isReadOnlyCommand', () => {
     expect(commandKey('npm install stripe')).toBe('npm install');
     expect(commandKey('CI=1 pnpm add -D vitest')).toBe('pnpm add');
   });
+
+  it('keys past a leading cd, and a chain only covers itself', () => {
+    expect(commandKey('cd "/Users/ana/Crag Night" && npm install zod')).toBe('npm install');
+    expect(commandKey('cd /x && npm install zod && rm -rf dist')).toBe('npm install zod && rm -rf dist');
+    expect(commandKey('cd /x\nnode server.js')).toBe('node server.js');
+  });
 });
 
 describe('gateHooks', () => {

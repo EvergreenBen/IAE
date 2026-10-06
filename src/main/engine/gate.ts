@@ -7,6 +7,7 @@
 
 import type { HookCallbackMatcher, HookJSONOutput, PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import type { Autonomy } from '../../shared/model';
+import { splitShell, stripCd } from './activity';
 
 const READ_ONLY = new Set([
   'ls', 'cat', 'head', 'tail', 'wc', 'pwd', 'echo', 'printf', 'grep', 'egrep', 'rg', 'which', 'type', 'file', 'stat', 'du', 'df',
@@ -66,9 +67,16 @@ export function isReadOnlyCommand(command: string): boolean {
   return cmd.split(/&&|\|\||;|\||\n/).every(segmentSafe);
 }
 
-/** "npm install", "pnpm add": what an "always allow" on a command covers for the rest of the job. */
+/**
+ * "npm install", "pnpm add": what an "always allow" on a command covers for the
+ * rest of the job. A leading `cd <project> &&` doesn't count (it would make one
+ * "always" cover every command behind the same cd), and a chain only ever
+ * covers itself.
+ */
 export function commandKey(command: string): string {
-  const words = command.trim().split(/\s+/).filter((w) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w));
+  const rest = stripCd(command);
+  if (splitShell(rest).length > 1) return rest;
+  const words = rest.split(/\s+/).filter((w) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w));
   return words.slice(0, 2).join(' ');
 }
 

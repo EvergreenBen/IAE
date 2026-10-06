@@ -6,7 +6,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { EngineEvent } from '../../shared/events';
 import type { AgendaItem, AgendaKind, NodeStatus } from '../../shared/model';
-import { anchorNode } from './agenda';
+import { anchorNode, type DecidedBy } from './agenda';
 import { describeResult, normalizeOps, opInput } from './mapops';
 import { errorText, log } from './sdk';
 import type { Workspace } from './workspace';
@@ -40,6 +40,9 @@ export interface LeadToolHost {
   stopAgent(agentId: string): Promise<string>;
   /** The lead already spoke this turn: results remind it to end without more text. */
   hasSpoken?: () => boolean;
+  /** The person answered a question during this turn (a tap, or resolve_question): a decide without `by` is theirs. */
+  answeredThisTurn?: () => boolean;
+  leadName?: () => string;
 }
 
 /** Appended to tool results once the turn's sentence is out (text after tools isn't spoken). */
@@ -158,17 +161,19 @@ export function createLeadTools(host: LeadToolHost): McpSdkServerConfigWithInsta
       ),
       tool(
         'decide',
-        'Record a decision you made or the person made, so builders and future turns follow it.',
+        'Record a decision so builders and future turns follow it. Say whose call it was: "person" when the person said or chose it (an answer to a card included), "me" when you decided it yourself.',
         {
           title: z.string().describe('The decision, ≤ 12 words: "Sessions live in Postgres".'),
           rationale: z.string().optional().describe('One line: why.'),
+          by: z.string().optional().describe('"person" (they said or chose it) or "me" (your own call).'),
           node_id: z.string().optional(),
         },
         (args) =>
           guard('decide', () => {
             if (!args.title?.trim()) return fail('title is required.');
-            const d = ws.agenda.decide({ title: args.title, rationale: args.rationale, nodeId: nodeOrNull(args.node_id).id });
-            return ok(`Recorded [${d.id}].`);
+            const by = decidedBy(args.by, host.answeredThisTurn?.() ?? false);
+            const d = ws.agenda.decide({ title: args.title, rationale: args.rationale, nodeId: nodeOrNull(args.node_id).id, by, leadName: host.leadName?.() });
+            return ok(`Recorded [${d.id}] as ${by === 'person' ? "the person's choice" : 'your own call'}.`);
           }),
       ),
       tool(
@@ -203,6 +208,14 @@ export function createLeadTools(host: LeadToolHost): McpSdkServerConfigWithInsta
       ),
     ],
   });
+}
+
+/** Whose decision it is: what the lead said, else the person's when they answered a question this turn. */
+export function decidedBy(by: unknown, answeredThisTurn: boolean): DecidedBy {
+  const b = typeof by === 'string' ? by.trim().toLowerCase() : '';
+  if (/^(person|user|human|they|them|the person|owner|client)$/.test(b)) return 'person';
+  if (/^(me|i|lead|the lead|self|myself|mine|own|my call)$/.test(b)) return 'lead';
+  return answeredThisTurn ? 'person' : 'lead';
 }
 
 function topIds(ws: Workspace): string[] {

@@ -3,9 +3,11 @@
 
 import type { PermissionResult, PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
 import { nanoid } from 'nanoid';
+import { homedir } from 'node:os';
 import { basename } from 'node:path';
 import type { EngineEvent } from '../../shared/events';
 import type { AgendaItem, AgentInfo, Settings } from '../../shared/model';
+import { commandSummary } from './activity';
 import { BuilderRun, type JobSpec, type Outcome, type PermissionAsk } from './builder';
 import { noteNewFiles } from './notes';
 import { log } from './sdk';
@@ -168,10 +170,14 @@ export class Crew {
 
   private askPermission(run: BuilderRun, ask: PermissionAsk): Promise<PermissionResult> {
     const id = `perm-${nanoid(6)}`;
-    const summary = ask.title || permissionSummary(ask.toolName, ask.input);
+    // A shell command is summed up from the command itself: Claude Code's title would lead with the `cd`.
+    const own = permissionSummary(ask.toolName, ask.input, this.d.ws.root, homedir());
+    const summary = ask.toolName === 'Bash' ? own : ask.title || own;
     const prev = { status: run.agent.status, activity: run.agent.activity };
     run.update({ status: 'waiting', activity: 'Waiting for your OK' });
-    this.d.emit({ type: 'permission/request', id, agentId: run.agent.id, tool: ask.toolName, summary, nodeId: run.agent.nodeId });
+    // The whole command too (the summary is one clipped line); the card shows it on demand.
+    const detail = ask.toolName === 'Bash' && typeof ask.input.command === 'string' ? ask.input.command.trim() : undefined;
+    this.d.emit({ type: 'permission/request', id, agentId: run.agent.id, tool: ask.toolName, summary, nodeId: run.agent.nodeId, ...(detail ? { detail } : {}) });
     return new Promise<PermissionResult>((resolve) => {
       const done = (r: PermissionResult) => {
         if (!this.permissions.has(id)) return;
@@ -231,7 +237,7 @@ export class Crew {
     if (this.finishedAt.has(id)) return;
     this.finishedAt.set(id, Date.now());
     for (const p of this.permissions.values()) if (p.agentId === id) p.resolve({ behavior: 'deny', message: 'Stopped.' });
-    ws.agenda.releaseAgent(id);
+    ws.agenda.releaseAgent(id, run.agent.name);
     run.update({
       status: outcome.status,
       activity: undefined,
@@ -292,11 +298,12 @@ export class Crew {
   }
 }
 
-export function permissionSummary(toolName: string, input: Record<string, unknown>): string {
+/** The one line on a permission card. Shell commands show what really runs (no `cd <project> &&`, short paths). */
+export function permissionSummary(toolName: string, input: Record<string, unknown>, root?: string, home?: string): string {
   const file = typeof input.file_path === 'string' ? basename(input.file_path) : null;
   switch (toolName) {
     case 'Bash':
-      return `Run ${clip(String(input.command ?? '').split('\n')[0], 80)}`;
+      return `Run ${commandSummary(String(input.command ?? ''), root, home, 90)}`;
     case 'Write':
       return `Write ${file ?? 'a file'}`;
     case 'Edit':

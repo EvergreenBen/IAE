@@ -9,6 +9,7 @@ import type { Settings } from '../../shared/model';
 import { buildContext, wrapTurn, type MapSeen, type TurnKind } from './context';
 import { leadOptions } from './lead-options';
 import { errorText, InputQueue, log, looksLikeAuthError } from './sdk';
+import { AskedQuestions, withoutDropped, type RepeatGuard } from './repeat';
 import { cleanReply, SpeechFilter } from './speech';
 import type { LeadEvent, Workspace } from './workspace';
 
@@ -35,8 +36,11 @@ interface PendingTurn {
 
 interface Turn extends PendingTurn {
   id: string;
+  startedAt: number;
   raw: string;
   filter: SpeechFilter;
+  /** Trims a repeat of an open card's question from later sentences (null: nothing to guard). */
+  guard: RepeatGuard | null;
   replying: boolean;
   streamed: Set<string>;
   textBlocks: number;
@@ -80,6 +84,8 @@ export class Lead {
   private resumeTries = 0;
   /** One-time notes for the next turn's context. */
   private notes: string[] = [];
+  /** The questions the lead asked out loud in earlier turns (so it doesn't keep asking them). */
+  private asked = new AskedQuestions();
   private stale = false;
   private closed = false;
   /** When the last reply finished, and roughly when its speech will end. */
@@ -99,6 +105,12 @@ export class Lead {
 
   get turnKind(): TurnKind | null {
     return this.turn?.kind ?? null;
+  }
+
+  /** The turn in flight: what prompted it and when it started. */
+  get currentTurn(): { kind: TurnKind; body: string; startedAt: number } | null {
+    const t = this.turn;
+    return t ? { kind: t.kind, body: t.body, startedAt: t.startedAt } : null;
   }
 
   /** The turn in flight has already said its piece (later text won't be spoken). */
@@ -272,6 +284,7 @@ export class Lead {
       slots: this.d.slots?.(),
       notes: this.notes.splice(0),
       kind: pending.kind,
+      askedAloud: (item) => this.asked.askedAloud(item),
     });
     this.seen = { version: ws.mapVersion, ids: new Set(Object.keys(ws.map.nodes)) };
     this.turnsSinceFullMap = context.fullMap ? 0 : this.turnsSinceFullMap + 1;
@@ -281,8 +294,10 @@ export class Lead {
     const turn: Turn = {
       ...pending,
       id: `turn-${nanoid(8)}`,
+      startedAt: Date.now(),
       raw: '',
       filter: new SpeechFilter(),
+      guard: this.asked.guard(pending.kind, pending.body, ws.agenda.open()),
       replying: false,
       streamed: new Set(),
       textBlocks: 0,
@@ -368,7 +383,11 @@ export class Lead {
    * further text is muted if the opening already said something real.
    */
   private blockStart(turn: Turn, type: string): void {
-    if (type === 'tool_use' || type === 'server_tool_use') turn.afterTools = true;
+    if (type === 'tool_use' || type === 'server_tool_use') {
+      turn.afterTools = true;
+      // The text before the tools is complete: release its last sentence now.
+      if (turn.guard && !turn.muted) this.say(turn, turn.guard.flush());
+    }
     if (type !== 'text' || turn.muted) return;
     if (this.saidOpening(turn)) {
       turn.muted = true;
@@ -380,6 +399,10 @@ export class Lead {
   private feed(turn: Turn, chunk: string): void {
     turn.raw += chunk;
     const out = turn.filter.push(chunk);
+    this.say(turn, turn.guard ? turn.guard.push(out) : out);
+  }
+
+  private say(turn: Turn, out: string): void {
     if (!out) return;
     if (!turn.replying) {
       turn.replying = true;
@@ -396,9 +419,16 @@ export class Lead {
 
   private finishTurn(turn: Turn): void {
     if (this.turn !== turn) return;
-    const tail = turn.filter.end();
-    if (tail && !turn.filter.silent) this.d.emit({ type: 'lead/delta', turnId: turn.id, text: tail });
-    const text = turn.filter.silent ? '' : cleanReply(turn.raw);
+    let tail = turn.filter.end();
+    if (turn.guard) tail = turn.guard.push(tail) + turn.guard.flush();
+    if (tail && !turn.filter.silent && !turn.interrupted) this.d.emit({ type: 'lead/delta', turnId: turn.id, text: tail });
+    const dropped = turn.guard?.dropped ?? [];
+    if (dropped.length) log('lead', `trimmed a repeat of an open card: ${dropped.map((d) => `"${d.trim()}"`).join(' ')}`);
+    const text = turn.filter.silent ? '' : dropped.length ? withoutDropped(cleanReply(turn.raw), dropped) : cleanReply(turn.raw);
+    if (text && !turn.interrupted) {
+      const added = this.d.ws.agenda.open().filter((i) => i.createdAt >= turn.startedAt);
+      this.asked.record(text, added.map((i) => i.id));
+    }
     this.clearTurn(turn);
     this.d.emit({ type: 'lead/done', turnId: turn.id, text });
     this.d.emit({ type: 'lead/state', state: 'idle' });

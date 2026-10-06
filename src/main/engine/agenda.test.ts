@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AgendaItem, Decision } from '../../shared/model';
 import { applyOps, emptyMap } from '../../shared/map';
-import { Agenda, anchorNode, MAX_OPEN, type AgendaSink } from './agenda';
+import { Agenda, anchorNode, isOwnCall, MAX_OPEN, plainRationale, whyWithout, type AgendaSink } from './agenda';
 
 function setup(items: AgendaItem[] = []) {
   const events: string[] = [];
@@ -114,9 +114,55 @@ describe('Agenda', () => {
     expect(agenda.get(q.id)?.blocking).toEqual(['kit']);
   });
 
+  it('a stopped or finished builder no longer blocks a card or shows as at work in its why', () => {
+    const { agenda, events } = setup();
+    const blocked = agenda.ask({ prompt: 'SMS or email reminders?', why: 'Ada is writing the scheduler now. Reminders cost money per SMS.', blocking: ['ada'] });
+    const mentions = agenda.ask({ prompt: 'Retry failed payments?', why: 'Ada is wiring the Stripe webhook.' });
+    const other = agenda.ask({ prompt: 'Keep logs 30 days?', why: 'Kit is setting up logging.' });
+    events.length = 0;
+    agenda.releaseAgent('ada', 'Ada');
+    expect(agenda.get(blocked.id)).toMatchObject({ blocking: [], why: 'Reminders cost money per SMS.' });
+    expect(agenda.get(mentions.id)?.why).toBeUndefined();
+    expect('why' in agenda.get(mentions.id)!).toBe(false);
+    expect(agenda.get(other.id)?.why).toBe('Kit is setting up logging.');
+    expect(events).toEqual([`upsert ${blocked.id}`, `upsert ${mentions.id}`]);
+  });
+
   it('clears stale blockers on load (builders do not survive a restart)', () => {
     const stale: AgendaItem = { id: 'q-1', kind: 'decision', prompt: 'x', blocking: ['ada'], priority: 0.95, status: 'open', createdAt: 1 };
     const { agenda } = setup([stale]);
     expect(agenda.open()[0].blocking).toEqual([]);
+    const sink: AgendaSink = { upsert: () => {}, remove: () => {}, decision: () => {}, persist: () => {} };
+    const reloaded = new Agenda([{ ...stale, why: "Ada's migrating the sessions table. It locks writes." }], [], sink, ['Ada', 'Kit']);
+    expect(reloaded.open()[0]).toMatchObject({ blocking: [], why: 'It locks writes.' });
+  });
+});
+
+describe('decision source', () => {
+  it("marks the lead's own calls in the rationale and leaves the person's alone", () => {
+    const { agenda } = setup();
+    const own = agenda.decide({ title: 'Outbox changes carry client IDs', rationale: 'Dedupes offline retries', by: 'lead', leadName: 'Archie' });
+    const bare = agenda.decide({ title: 'Sessions in Postgres', by: 'lead', leadName: 'Juniper' });
+    const theirs = agenda.decide({ title: 'Day passes only', rationale: 'Mindbody handles classes', by: 'person' });
+    expect(own.rationale).toBe("Archie's call: Dedupes offline retries");
+    expect(bare.rationale).toBe("Juniper's call");
+    expect(theirs.rationale).toBe('Mindbody handles classes');
+    expect([own, bare, theirs].map(isOwnCall)).toEqual([true, true, false]);
+    expect(plainRationale(own)).toBe('Dedupes offline retries');
+    expect(plainRationale(bare)).toBeUndefined();
+    // A person's decision never carries the mark, even if the lead wrote it in.
+    expect(agenda.decide({ title: 'x', rationale: "Archie's call: y", by: 'person' }).rationale).toBe('y');
+  });
+});
+
+describe('whyWithout', () => {
+  it('drops only sentences that speak of the builder as at work', () => {
+    expect(whyWithout('Ada is writing the scheduler now.', ['Ada'])).toBeUndefined();
+    expect(whyWithout('Ada needs this before she migrates sessions.', ['Ada'])).toBeUndefined();
+    expect(whyWithout('Reminders depend on it while Ada builds the queue.', ['Ada'])).toBeUndefined();
+    expect(whyWithout("Ada's done with sessions, so this decides the webhook.", ['Ada'])).toBe("Ada's done with sessions, so this decides the webhook.");
+    expect(whyWithout('Ada built the schema last week. Kit is on the API.', ['Ada'])).toBe('Ada built the schema last week. Kit is on the API.');
+    expect(whyWithout('Max upload size decides the storage plan.', ['Max'])).toBe('Max upload size decides the storage plan.');
+    expect(whyWithout(undefined, ['Ada'])).toBeUndefined();
   });
 });

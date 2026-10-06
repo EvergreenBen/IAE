@@ -74,7 +74,12 @@ rest are small dots. Archie:
   answers directly. A spoken reply only *hints* at the card, and Archie decides
   whether it was an answer, so "show me the backend" never gets recorded as a
   decision.
-- records each decision once, in its own words
+- records each decision once, in its own words, and says whose it was. A
+  choice the person made is theirs. A call Archie made on its own is marked as
+  Archie's, and Archie recalls it honestly ("I went with…", never "we decided").
+- asks a card's question out loud once. After that the card is visible, so
+  Archie doesn't restate it. If the person says something else, Archie answers
+  that. A small guard in the engine trims an accidental repeat.
 - orders items by **what unblocks work first**, then by **cost of getting it
   wrong later**
 - never stacks more than about five open items. It prunes stale ones itself.

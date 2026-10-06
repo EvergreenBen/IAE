@@ -58,8 +58,23 @@ describe('buildContext', () => {
     const { text, fullMap } = buildContext({ ws: as(ws), crew: [], agentName: (id) => id, seen: null, withDecisions: true, notes: ['your name is now Juniper'] });
     expect(fullMap).toBe(true);
     expect(text).toContain('note: your name is now Juniper');
-    expect(text).toContain('- [q1] decision on app: "Web or native?" options: Web | Native (the card on screen)');
-    expect(text).toContain("decided so far (don't re-ask):\n- Members first (Owner said so) [app]");
-    expect(buildContext({ ws: as(ws), crew: [], agentName: (id) => id, seen: null }).text).not.toContain('decided so far');
+    expect(text).toContain('- [q1] decision on app: "Web or native?" options: Web | Native (the card on screen: the person can see it, so don\'t restate it)');
+    const asked = buildContext({ ws: as(ws), crew: [], agentName: (id) => id, seen: null, askedAloud: (it) => it.id === 'q1' }).text;
+    expect(asked).toContain("(the card on screen: the person can see it, so don't restate it; you already asked it out loud)");
+    expect(text).toContain("the person decided (don't re-ask):\n- Members first (Owner said so) [app]");
+    expect(text).not.toContain('you decided on your own');
+    expect(buildContext({ ws: as(ws), crew: [], agentName: (id) => id, seen: null }).text).not.toContain('the person decided');
+  });
+
+  it("lists the lead's own calls apart from the person's choices", () => {
+    const ws = workspace();
+    ws.decisions = [
+      { id: 'd1', title: 'Day passes only for payments', nodeId: null, at: 1 },
+      { id: 'd2', title: 'Outbox changes carry client IDs', rationale: "Archie's call: dedupes offline retries", nodeId: 'sync', at: 2 },
+      { id: 'd3', title: 'Sessions in Postgres', rationale: "Archie's call", at: 3 },
+    ];
+    const { text } = buildContext({ ws: as(ws), crew: [], agentName: (id) => id, seen: null, withDecisions: true });
+    expect(text).toContain("the person decided (don't re-ask):\n- Day passes only for payments\nyou decided on your own");
+    expect(text).toContain('never "we decided"):\n- Outbox changes carry client IDs (dedupes offline retries) [sync]\n- Sessions in Postgres\n');
   });
 });

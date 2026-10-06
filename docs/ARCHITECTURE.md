@@ -139,10 +139,13 @@ On the first open of an existing codebase (no `.iae/map.json`):
 ### Sketcher (architecture autocomplete)
 
 A warm, minimal Haiku session (thinking off, `tools: []`,
-`strictMcpConfig`). `draft(text)` calls are debounced (about 350ms). Only the
-latest draft matters, and stale results are dropped. The output is JSON:
-`GhostProposal[]` (likely new components plus the existing node each sits
-near). It emits `ghost/proposals`. The renderer also runs an instant local
+`strictMcpConfig`). `draft(text)` calls are debounced (about 350ms), and stale
+results are dropped. Each draft is sent whole, along with what's already
+sketched for the current utterance. The engine keeps a running **union** per
+utterance, so ghosts accumulate as the sentence grows rather than replacing
+each other. A component keeps its first key and label, so nothing flickers.
+The output is `GhostProposal[]` (median about 1s), and the engine emits
+`ghost/proposals`. The renderer also runs an instant local
 lexicon (`conversation/lexicon.ts`) so ghosts appear even before the model
 answers.
 
