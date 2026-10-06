@@ -6,8 +6,13 @@
 // - Start needs energy well above the floor for `onsetMs`; end needs energy
 //   back near the floor for `hangoverMs`. The gap between the two thresholds
 //   is the hysteresis that keeps it from flapping.
-// - `strict` raises the start bar while the lead's voice is coming out of the
-//   speakers, so Archie doesn't interrupt itself.
+// - `strict` raises the start bar near the lead's voice, and `gate` closes the
+//   door entirely while that voice is actually audible. The gate is not
+//   belt-and-braces: speechSynthesis plays through the system synthesiser,
+//   outside the page's audio path, so the browser's echo canceller has no
+//   reference signal for it and cannot remove it from the mic. Without the
+//   gate the mic hears Archie, the VAD calls it speech, and he interrupts
+//   himself mid-sentence.
 
 export interface VadOptions {
   frameMs: number;
@@ -44,6 +49,7 @@ export class Vad {
   /** Milliseconds of voiced audio in the current (or last) utterance. */
   voicedMs = 0;
   private strict = false;
+  private gated = false;
   private calib: number[] = [];
   private onsetFrames = 0;
   private dips = 0;
@@ -59,6 +65,23 @@ export class Vad {
 
   setStrict(on: boolean): void {
     this.strict = on;
+  }
+
+  /**
+   * While the lead is audible the mic is hearing it, so no new utterance may
+   * start. An utterance already under way is left alone — that is a real
+   * person talking over the lead, which is what barge-in is for.
+   */
+  setGate(on: boolean): void {
+    if (on && !this.gated && !this.speaking) {
+      this.onsetFrames = 0;
+      this.dips = 0;
+    }
+    this.gated = on;
+  }
+
+  get isGated(): boolean {
+    return this.gated;
   }
 
   /** Forget the utterance in progress (keeps the noise floor). */
@@ -94,6 +117,13 @@ export class Vad {
     const { start, end } = this.thresholds();
 
     if (!this.speaking) {
+      // Gated: the lead's own voice must neither start an utterance nor drag
+      // the noise floor up behind it.
+      if (this.gated) {
+        this.onsetFrames = 0;
+        this.dips = 0;
+        return null;
+      }
       if (rms > start) {
         this.onsetFrames++;
         this.dips = 0;

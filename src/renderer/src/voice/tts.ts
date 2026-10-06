@@ -13,6 +13,9 @@ export interface SpeakOptions {
   voice: string;
 }
 
+/** How often to reset the synthesiser's watchdog while it has work queued. */
+const KEEPALIVE_MS = 10_000;
+
 // Novelty voices that ship with macOS. Never pick these by default.
 const NOVELTY =
   /^(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|junior|ralph|kathy|fred|deranged|hysterical|pipe organ)\b/i;
@@ -52,7 +55,7 @@ export function pickVoice(voices: SpeechSynthesisVoice[], preferred: string): Sp
   return best;
 }
 
-class Speaker {
+export class Speaker {
   private chunker = new SentenceChunker();
   private turnId: string | null = null;
   /** Turns the user talked over: late deltas for them are dropped. */
@@ -62,6 +65,7 @@ class Speaker {
   private voices: SpeechSynthesisVoice[] = [];
   private audible = false;
   private quietTimer: ReturnType<typeof setTimeout> | undefined;
+  private keepAlive: ReturnType<typeof setInterval> | undefined;
   opts: SpeakOptions = { enabled: true, rate: 1.05, voice: '' };
   /** Called when the voice becomes audible / falls silent. */
   onSpeaking: (speaking: boolean) => void = () => {};
@@ -139,7 +143,10 @@ class Speaker {
     if (turnId !== this.turnId) {
       this.turnId = turnId;
       this.chunker.reset();
-      this.chunker.push(text);
+      // Nothing streamed for this turn, so the whole reply arrives here at once:
+      // speak the sentences it splits into as well, not only the tail that is
+      // left in the buffer afterwards.
+      for (const chunk of this.chunker.push(text)) this.say(chunk);
     }
     for (const chunk of this.chunker.flush()) this.say(chunk);
   }
@@ -163,13 +170,42 @@ class Speaker {
     };
     const finish = () => {
       this.live.delete(u);
+      if (this.live.size === 0) this.stopKeepAlive();
       if (gen === this.gen && this.live.size === 0) this.setAudible(false);
     };
     u.onend = finish;
     u.onerror = finish;
     // Hold a reference: Chrome drops events for utterances that get garbage-collected.
     this.live.add(u);
+    // A cancel() (or a stalled keep-alive ping) can leave the synthesiser
+    // paused; anything queued onto it then never starts.
+    if (speechSynthesis.paused) speechSynthesis.resume?.();
     speechSynthesis.speak(u);
+    this.startKeepAlive();
+  }
+
+  /**
+   * Chromium stops speaking after roughly fifteen seconds of a continuous run
+   * and leaves the rest of the queue stuck — the voice starts, then simply
+   * falls silent part-way through a reply. A pause/resume pair resets that
+   * watchdog and is inaudible, so ping it while anything is still outstanding.
+   */
+  private startKeepAlive(): void {
+    if (this.keepAlive !== undefined || !this.supported) return;
+    this.keepAlive = setInterval(() => {
+      if (this.live.size === 0) {
+        this.stopKeepAlive();
+        return;
+      }
+      if (!speechSynthesis.speaking) return;
+      speechSynthesis.pause?.();
+      speechSynthesis.resume?.();
+    }, KEEPALIVE_MS);
+  }
+
+  private stopKeepAlive(): void {
+    clearInterval(this.keepAlive);
+    this.keepAlive = undefined;
   }
 
   /** Barge-in: stop mid-word, drop the queue, ignore the rest of this turn. */
@@ -179,6 +215,7 @@ class Speaker {
     if (this.muted.size > 20) this.muted = new Set([...this.muted].slice(-10));
     this.chunker.reset();
     this.live.clear();
+    this.stopKeepAlive();
     if (this.supported) speechSynthesis.cancel();
     clearTimeout(this.quietTimer);
     if (this.audible) {

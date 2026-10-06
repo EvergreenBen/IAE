@@ -36,6 +36,9 @@ export interface VoiceHooks {
   onDiscard(): void;
 }
 
+/** How long the mic stays shut after the lead's last word: the room still
+ *  carries its tail, and that tail is what used to start an utterance. */
+const LEAD_TAIL_MS = 350;
 const FRAME_MS = 20;
 const PREROLL_FRAMES = 15; // 300ms
 const MIN_PTT_MS = 280;
@@ -109,6 +112,7 @@ class VoiceController {
   private loadProgress = 0;
   private shownProgress: number | undefined = undefined;
   private prewarmTimer: ReturnType<typeof setTimeout> | undefined;
+  private gateTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
     stt.onCrash = (err) => {
@@ -136,6 +140,7 @@ class VoiceController {
     if (on) {
       this.vad = new Vad(); // recalibrate the noise floor for wherever we are now
       this.vad.setStrict(tts.speaking);
+      this.vad.setGate(tts.speaking);
       if (await this.ensureMic()) void this.ensureModel().catch(() => {});
     } else {
       if (this.utter?.via === 'vad') this.end();
@@ -219,9 +224,21 @@ class VoiceController {
     this.typing = on;
   }
 
-  /** The lead is audible: make the VAD harder to trigger so it doesn't hear itself. */
+  /**
+   * The lead is audible. The mic hears it — speechSynthesis plays outside the
+   * page, so the browser's echo canceller cannot remove it — so shut the door
+   * on new utterances until shortly after it stops. Deliberate barge-in (Space
+   * or ⌘.) still interrupts immediately; only the mic hearing itself is
+   * blocked.
+   */
   setLeadSpeaking(on: boolean): void {
     this.vad.setStrict(on);
+    clearTimeout(this.gateTimer);
+    if (on) {
+      this.vad.setGate(true);
+    } else {
+      this.gateTimer = setTimeout(() => this.vad.setGate(false), LEAD_TAIL_MS);
+    }
   }
 
   /**
@@ -244,6 +261,7 @@ class VoiceController {
     this.cool(0);
     clearTimeout(this.errorTimer);
     clearTimeout(this.prewarmTimer);
+    clearTimeout(this.gateTimer);
   }
 
   // ── capture ────────────────────────────────────────────────────────────────

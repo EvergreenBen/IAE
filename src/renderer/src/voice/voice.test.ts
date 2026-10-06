@@ -42,6 +42,32 @@ describe('Vad', () => {
     expect(frames(vad, 0.1, 400)).toEqual(['start']);
   });
 
+  it('never starts on the lead\'s own voice, and reopens after it stops', () => {
+    // The regression: speechSynthesis plays outside the page, so the browser's
+    // echo canceller has no reference for it. The mic hears Archie at full
+    // speech level; without the gate that started an utterance, which barged
+    // in and cut him off mid-sentence.
+    const vad = new Vad();
+    frames(vad, 0.003, 500); // calibrate on a quiet room
+    vad.setStrict(true);
+    vad.setGate(true);
+    expect(frames(vad, 0.09, 1500)).toEqual([]);
+    // Loud echo must not drag the noise floor up behind it either.
+    expect(vad.floor).toBeCloseTo(0.003, 4);
+
+    vad.setGate(false);
+    expect(frames(vad, 0.09, 400)).toEqual(['start']);
+  });
+
+  it('lets a person who is already talking carry on when the lead starts', () => {
+    const vad = new Vad();
+    frames(vad, 0.003, 500);
+    expect(frames(vad, 0.08, 400)).toEqual(['start']);
+    vad.setGate(true); // the lead begins over them: barge-in is theirs to keep
+    expect(vad.speaking).toBe(true);
+    expect(frames(vad, 0.003, 800)).toEqual(['end']);
+  });
+
   it('follows a rising noise floor slowly and a falling one quickly', () => {
     const vad = new Vad();
     frames(vad, 0.01, 500);
