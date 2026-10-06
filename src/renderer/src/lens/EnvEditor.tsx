@@ -9,6 +9,7 @@ import {
   duplicateKeys,
   entriesOf,
   headingText,
+  isRuleComment,
   insertItem,
   parseEnv,
   removeItem,
@@ -46,7 +47,8 @@ function sectionsOf(doc: EnvDoc): Section[] {
       const t = headingText(it.text);
       if (!t) continue;
       const last = out[out.length - 1];
-      if (last.title && !last.rows.length) last.more.push(t);
+      // A ruled comment ("# ── Database ──") always opens its own section.
+      if (last.title && !last.rows.length && !isRuleComment(it.text)) last.more.push(t);
       else out.push({ id: it.id, title: t, more: [], rows: [] });
       continue;
     }
