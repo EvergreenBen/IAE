@@ -5,8 +5,9 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ancestorsOf } from '@shared/map';
 import { CrewMark } from '../avatar/CrewMark';
 import { ui, useIae } from '../state/store';
-import { resolveAnchor, useShownLayout } from './anchors';
-import { AgentCard, Permission } from './Crew';
+import { AgentCard } from './Crew';
+import { usePermsOnMap } from './permHome';
+import { Permission } from './Permission';
 import s from './Chrome.module.css';
 
 const LIVE = new Set(['starting', 'thinking', 'working', 'waiting', 'done']);
@@ -18,7 +19,8 @@ export function Chrome() {
   const agents = useIae((st) => st.agents);
   const permissions = useIae((st) => st.permissions);
 
-  const { layout, shown, busy } = useShownLayout();
+  // A prompt hangs off the agent's token on the map while that token is on screen; otherwise it hangs here.
+  const permsOnMap = usePermsOnMap();
   const crumbs = useMemo(() => {
     if (!scopeId || !map.nodes[scopeId]) return [];
     return [...ancestorsOf(map, scopeId), map.nodes[scopeId]];
@@ -62,8 +64,7 @@ export function Chrome() {
               const perm = permissions.find((p) => p.agentId === a.id) ?? null;
               const waiting = a.status === 'waiting' || !!perm;
               const where = a.nodeId ? map.nodes[a.nodeId]?.label : null;
-              // A prompt hangs off the agent's token on the map; when that token isn't in view, it hangs here.
-              const onMap = !busy && !!resolveAnchor(map, layout, shown, a.nodeId);
+              const onMap = permsOnMap.has(a.id);
               return (
                 <motion.div
                   key={a.id}

@@ -62,12 +62,13 @@ let stopWaiting: (() => void) | null = null;
 let clearPending = false;
 
 /** The current text of the utterance changed (typed or interim speech). */
-export function draft(text: string): void {
+export function draft(text: string, via: 'text' | 'voice' = 'voice'): void {
   const t = text.trim();
   if (!t) return abandon();
   cancelClear();
   draftId ??= `draft-${Date.now().toString(36)}-${++draftSeq}`;
-  const proposals = lexiconProposals(t, useIae.getState().map);
+  // Typed text may end mid-word: its last word only counts once finished (lexicon.ts).
+  const proposals = lexiconProposals(text, useIae.getState().map, { typing: via === 'text' });
   if (!sameProposals(proposals, lexicon)) {
     lexicon = proposals;
     ui.setLexiconGhosts(proposals);

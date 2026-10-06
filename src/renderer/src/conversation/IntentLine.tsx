@@ -128,7 +128,7 @@ export function IntentLine() {
     noteTyping(v.length > 0);
     voice.setTyping(v.length > 0);
     if (v.startsWith('/')) abandon();
-    else draft(v);
+    else draft(v, 'text');
   }
 
   function runCommand(cmd: SlashCommandInfo) {

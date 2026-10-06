@@ -37,24 +37,34 @@
   background: var(--paper-sunk);
 }
 
+/* One line each: the name, then the argument hint (never more than ~30% of the
+   row), then the description, which always keeps the rest. Each ellipsizes. */
+.name,
+.hint,
+.desc {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .name {
   font-family: var(--font-mono);
   font-size: 12.5px;
   color: var(--ink);
-  flex: none;
+  flex: 0 0 auto;
+  max-width: 45%;
 }
 .hint {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-4);
-  flex: none;
+  flex: 0 1 auto;
+  max-width: 30%;
 }
 .desc {
   font-size: var(--text-sm);
   color: var(--ink-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
+  flex: 1 1 0;
 }
 
 .empty {

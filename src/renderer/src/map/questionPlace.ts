@@ -2,15 +2,25 @@
 // area (never over the chrome or the conversation at the bottom). Pure, so it
 // can be tested. Units: world px for rects; "card px" for the card's own
 // geometry, which the overlay counter-scales by `ov` (world px per card px).
+//
+// Hard rules: a card never covers another node (or its own), its leader never
+// runs through one, and once the camera can't make room it stays inside the
+// safe area. Within those, it prefers the right side, a short leader, and
+// keeping clear of edges (strongly) and labels. When the full card has no room
+// a compact one (narrower, options inline, `why` folded away) is tried; when
+// even that has none, place() returns null and the card's clay dot stands in
+// (clicking it asks again with `force`).
 import type { Anchor } from './anchors';
-import { clamp, inflate, type Rect } from './geometry';
+import { overlaps, type Rect } from './geometry';
 import { QUESTION_CARD_W } from './layoutTypes';
 
 export const CARD_W = QUESTION_CARD_W;
+/** The compact card, for tight spots. */
+export const COMPACT_W = 248;
 export const LEADER = 30;
 /** Side cards: the leader meets the card this far below its top (card px). */
 export const HEAD = 24;
-/** Below/above cards: the leader meets the card this far in from its right edge (card px). */
+/** Below/above cards: the leader meets the card this far in from its right edge, at no slide (card px). */
 export const NOTCH = 28;
 
 export type Side = 'right' | 'left' | 'below' | 'above';
@@ -23,13 +33,17 @@ export interface Placement {
   dy: number;
   /** How far the card slides along its side to stay in view, card px (up for side cards, right for below/above). */
   slide: number;
+  /** Below/above: where the leader leaves the node, world px from its left (default: near the right corner). */
+  dx?: number;
+  /** The compact layout (narrower, options inline, `why` folded away). */
+  compact?: boolean;
 }
 
 export interface PlaceInput {
   at: Anchor;
-  /** Hard obstacles: other nodes, file tiles. */
+  /** Hard obstacles: other nodes, file tiles and shelf chips. */
   nodes: Rect[];
-  /** Soft obstacles: stubs, the file shelf, edge labels, a frame's title row. */
+  /** Soft obstacles: stubs, edge labels, a frame's title row. */
   soft: Rect[];
   /** Edge segments (thin rects): a card shouldn't hide the wiring it's about. */
   lines: Rect[];
@@ -37,13 +51,16 @@ export interface PlaceInput {
   safe: Rect | null;
   /**
    * The camera may still ease to make room for this card (once, when the user
-   * isn't steering): then leaving the safe area costs little and covering the
-   * map costs more. Otherwise staying in view is close to a hard rule.
+   * isn't steering): then a card may sit partly outside the safe area as long
+   * as a pan can bring it and its node into view. Otherwise the safe area is a
+   * hard rule.
    */
   canPan: boolean;
   ov: number;
   /** Card height, card px (measured, or estimated before the first measure). */
   h: number;
+  /** Compact card height, card px (measured or estimated). Defaults to `h`. */
+  hCompact?: number;
   /** A framed scope's right margin (world x), where a crowded card can go. */
   marginX: number | null;
   /** A framed scope's left margin (world x, right edge of the free area), for a card about the scope itself. */
@@ -51,14 +68,19 @@ export interface PlaceInput {
   keep: Placement | null;
   /** Where edges meet the node on each side (world y), so the leader avoids them. */
   ports: { left: number[]; right: number[] };
+  /** The user asked to see this card: never return null, take the least-bad spot. */
+  force?: boolean;
 }
 
 const area = (a: Rect, b: Rect) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+const grow = (r: Rect, d: number): Rect => ({ x: r.x - d, y: r.y - d, w: r.w + 2 * d, h: r.h + 2 * d });
+
+export const cardW = (p: Pick<Placement, 'compact'>) => (p.compact ? COMPACT_W : CARD_W);
 
 /** Where the leader leaves the anchor (world). */
-export function anchorPoint(at: Anchor, side: Side, dy: number): { x: number; y: number } {
+export function anchorPoint(at: Anchor, side: Side, dy: number, dx?: number): { x: number; y: number } {
   const r = at.rect;
-  const px = r.x + r.w - (at.frame ? 40 : NOTCH);
+  const px = r.x + (dx ?? r.w - (at.frame ? 40 : NOTCH));
   if (side === 'right') return { x: r.x + r.w, y: r.y + dy };
   if (side === 'left') return { x: r.x, y: r.y + dy };
   if (side === 'below') return { x: px, y: at.frame ? r.y + 64 : r.y + r.h };
@@ -67,40 +89,37 @@ export function anchorPoint(at: Anchor, side: Side, dy: number): { x: number; y:
 
 /** The card's rect in world px. Mirrors the inline styles in Questions.tsx. */
 export function cardRect(at: Anchor, p: Placement, ov: number, h: number): Rect {
-  const a = anchorPoint(at, p.side, p.dy);
-  const w = CARD_W * ov;
+  const a = anchorPoint(at, p.side, p.dy, p.dx);
+  const W = cardW(p);
+  const w = W * ov;
   const hh = h * ov;
   if (p.side === 'right') return { x: a.x + p.lead * ov, y: a.y - (HEAD + p.slide) * ov, w, h: hh };
-  if (p.side === 'left') return { x: a.x - (p.lead + CARD_W) * ov, y: a.y - (HEAD + p.slide) * ov, w, h: hh };
-  const x = a.x + (NOTCH - CARD_W + p.slide) * ov;
+  if (p.side === 'left') return { x: a.x - (p.lead + W) * ov, y: a.y - (HEAD + p.slide) * ov, w, h: hh };
+  const x = a.x + (NOTCH - W + p.slide) * ov;
   if (p.side === 'below') return { x, y: a.y + p.lead * ov, w, h: hh };
   return { x, y: a.y - (p.lead + h) * ov, w, h: hh };
 }
 
-/** Range the slide may take so the leader still meets the card's edge. */
-function slideRange(side: Side, h: number): [number, number] {
-  return side === 'right' || side === 'left' ? [0, Math.max(0, h - HEAD - 22)] : [-8, CARD_W - NOTCH - 22];
+/** The leader as a thin rect (world), from the node to the card. */
+function leaderRect(at: Anchor, p: Placement, ov: number): Rect {
+  const a = anchorPoint(at, p.side, p.dy, p.dx);
+  const len = p.lead * ov;
+  if (p.side === 'right') return { x: a.x + 2, y: a.y - 2, w: Math.max(0, len - 2), h: 4 };
+  if (p.side === 'left') return { x: a.x - len, y: a.y - 2, w: Math.max(0, len - 2), h: 4 };
+  if (p.side === 'below') return { x: a.x - 2, y: a.y + 2, w: 4, h: Math.max(0, len - 2) };
+  return { x: a.x - 2, y: a.y - len, w: 4, h: Math.max(0, len - 2) };
 }
 
-/** The smallest slide that keeps the card inside the safe area (or as close as it gets). */
-function fitSlide(at: Anchor, c: Omit<Placement, 'slide'>, ov: number, h: number, safe: Rect): number {
-  const [lo, hi] = slideRange(c.side, h);
-  const r = cardRect(at, { ...c, slide: 0 }, ov, h);
-  if (c.side === 'right' || c.side === 'left') {
-    // Sliding up by s moves the card's top to r.y - s*ov.
-    const needUp = (r.y + r.h - (safe.y + safe.h)) / ov; // ≥ this to clear the bottom
-    const maxUp = (r.y - safe.y) / ov; // ≤ this to stay below the top
-    let s = Math.max(0, needUp);
-    if (s > maxUp) s = Math.max(0, maxUp);
-    return clamp(s, lo, hi);
-  }
-  // Sliding right by s moves the card's left to r.x + s*ov.
-  const needRight = (safe.x - r.x) / ov;
-  const maxRight = (safe.x + safe.w - (r.x + r.w)) / ov;
-  let s = 0;
-  if (needRight > 0) s = needRight;
-  else if (maxRight < 0) s = maxRight;
-  return clamp(s, lo, hi);
+/** Range the slide may take so the leader still meets the card's edge. */
+function slideRange(side: Side, h: number, W: number): [number, number] {
+  return side === 'right' || side === 'left' ? [0, Math.max(0, h - HEAD - 22)] : [-8, W - NOTCH - 22];
+}
+
+function steps(lo: number, hi: number, n: number): number[] {
+  if (hi <= lo) return [lo];
+  const out = new Set<number>();
+  for (let i = 0; i <= n; i++) out.add(Math.round(lo + ((hi - lo) * i) / n));
+  return [...out];
 }
 
 /** A leader height that doesn't run along an edge or through a pill on its way out. */
@@ -127,96 +146,159 @@ function leaderDy(at: Anchor, side: Side, lead: number, ov: number, ports: numbe
   return best;
 }
 
-/**
- * The free side: least overlap with nodes and stubs, inside the safe area,
- * short leader preferred. When the neighbourhood is crowded the card moves to
- * the scope's right margin (which the camera keeps clear, see Driver.fitView).
- */
-export function place(input: PlaceInput): Placement {
-  const { at, nodes, soft, lines, safe, ov, h, marginX, marginL, keep, ports, canPan } = input;
-  const outside = canPan ? 1 : 10;
+interface Cand {
+  side: Side;
+  lead: number;
+  pref: number;
+}
+
+/** Leader lengths tried on each side (card px): short first, long when the neighbourhood is crowded. */
+const SIDE_LEADS = [LEADER, LEADER + 26, LEADER + 56, LEADER + 100, LEADER + 160, LEADER + 230];
+const VERT_LEADS = [LEADER + 12, LEADER + 40, LEADER + 80, LEADER + 130];
+
+function candidates(input: PlaceInput): Cand[] {
+  const { at, ov, marginX, marginL } = input;
   const r = at.rect;
-  // A card about the scope itself sits outside its frame (clear of the stubs), never over its children.
-  const frameLead = (gap: number | null) => Math.max(LEADER, gap === null ? LEADER : gap / ov);
-  const cands: { side: Side; lead: number; pref: number }[] = at.frame
-    ? [
-        { side: 'right', lead: frameLead(marginX === null ? null : marginX - (r.x + r.w)), pref: 0 },
-        { side: 'left', lead: frameLead(marginL === null ? null : r.x - marginL), pref: 1500 },
-        { side: 'below', lead: LEADER, pref: 6000 },
-      ]
-    : [
-        { side: 'right', lead: LEADER, pref: 0 },
-        { side: 'below', lead: LEADER + 12, pref: 900 },
-        { side: 'right', lead: LEADER + 56, pref: 1600 },
-        { side: 'left', lead: LEADER, pref: 1900 },
-        { side: 'left', lead: LEADER + 56, pref: 2600 },
-        { side: 'above', lead: LEADER, pref: 2800 },
-        ...(marginX !== null && marginX > r.x + r.w + LEADER * ov ? [{ side: 'right' as const, lead: (marginX - (r.x + r.w)) / ov, pref: 2400 }] : []),
-      ];
+  if (at.frame) {
+    // A card about the scope itself sits outside its frame (clear of the stubs), never over its children.
+    const frameLead = (gap: number | null) => Math.max(LEADER, gap === null ? LEADER : gap / ov);
+    const right = frameLead(marginX === null ? null : marginX - (r.x + r.w));
+    const left = frameLead(marginL === null ? null : r.x - marginL);
+    return [
+      ...[0, 40, 100].map((d, i) => ({ side: 'right' as const, lead: right + d, pref: i * 400 })),
+      ...[0, 40, 100].map((d, i) => ({ side: 'left' as const, lead: left + d, pref: 1500 + i * 400 })),
+      { side: 'above', lead: LEADER, pref: 3000 },
+      { side: 'below', lead: LEADER, pref: 6000 },
+    ];
+  }
+  const out: Cand[] = [];
+  SIDE_LEADS.forEach((lead, i) => {
+    out.push({ side: 'right', lead, pref: i * 450 });
+    out.push({ side: 'left', lead, pref: 1900 + i * 450 });
+  });
+  VERT_LEADS.forEach((lead, i) => {
+    out.push({ side: 'below', lead, pref: 900 + i * 500 });
+    out.push({ side: 'above', lead, pref: 2800 + i * 500 });
+  });
+  if (marginX !== null && marginX > r.x + r.w + LEADER * ov) out.push({ side: 'right', lead: (marginX - (r.x + r.w)) / ov, pref: 2400 });
+  return out;
+}
 
-  const score = (p: Placement, pref: number) => {
-    const card = cardRect(at, p, ov, h);
-    const c = inflate(card, 10 * ov);
-    let sc = pref + Math.abs(p.slide) * ov * 4 + p.lead * ov * 2;
-    for (const n of nodes) sc += area(c, n) * 6;
-    for (const n of soft) sc += area(c, n) * 3;
-    for (const l of lines) sc += area(card, l) * 6;
-    // Outside the safe area means under the chrome or the conversation (unless the camera will make room).
-    if (safe) sc += (card.w * card.h - area(card, safe)) * outside;
-    // A card that can't fit in view even after a pan (taller than the safe area) is a last resort.
-    if (safe && canPan) sc += Math.max(0, card.h - safe.h) * card.w * 8;
-    return sc;
-  };
-  const variants = (c0: { side: Side; lead: number }): Placement[] => {
-    const dy = leaderDy(at, c0.side, c0.lead, ov, c0.side === 'left' ? ports.left : ports.right, soft);
-    const base = { side: c0.side, lead: c0.lead, dy };
-    // Slides: none, the one that keeps it in view, and (for side cards) lifts that dodge what's below.
-    const slides = new Set([0]);
-    if (safe && !canPan) slides.add(fitSlide(at, base, ov, h, safe));
-    if (c0.side === 'right' || c0.side === 'left') {
-      const [, hi] = slideRange(c0.side, h);
-      slides.add(Math.round(hi / 2));
-      slides.add(Math.round(hi));
-    }
-    return [...slides].map((slide) => ({ ...base, slide }));
-  };
+/** Every concrete placement for one candidate side and leader. */
+function variants(input: PlaceInput, c: Cand, compact: boolean, h: number): Placement[] {
+  const { at, ov, ports, soft } = input;
+  const W = compact ? COMPACT_W : CARD_W;
+  const [lo, hi] = slideRange(c.side, h, W);
+  const out: Placement[] = [];
+  if (c.side === 'right' || c.side === 'left') {
+    const dy = leaderDy(at, c.side, c.lead, ov, c.side === 'left' ? ports.left : ports.right, soft);
+    for (const slide of steps(lo, hi, 12)) out.push({ side: c.side, lead: c.lead, dy, slide, ...(compact ? { compact } : {}) });
+    return out;
+  }
+  const r = at.rect;
+  // Below/above: the leader can leave anywhere along the node (near its right corner by default).
+  const dxs = at.frame ? [undefined] : [undefined, r.w / 2, NOTCH];
+  for (const dx of dxs) for (const slide of steps(lo, hi, 10)) out.push({ side: c.side, lead: c.lead, dy: 26, slide, ...(dx !== undefined ? { dx } : {}), ...(compact ? { compact } : {}) });
+  return out;
+}
 
-  let best: Placement = { side: cands[0].side, lead: cands[0].lead, dy: 26, slide: 0 };
-  let bestScore = Infinity;
-  let kept: { p: Placement; s: number } | null = null;
-  for (const c0 of cands) {
-    for (const p of variants(c0)) {
-      const sc = score(p, c0.pref);
-      if (sc < bestScore) {
-        bestScore = sc;
-        best = p;
-      }
-      if (keep && keep.side === p.side && Math.abs(keep.lead - p.lead) < 1 && (!kept || sc < kept.s)) kept = { p, s: sc };
+/** Hard-rule violations (0 = allowed) and the soft cost of one placement. */
+function judge(input: PlaceInput, p: Placement, pref: number, h: number): { bad: number; cost: number } {
+  const { at, nodes, soft, lines, safe, ov, canPan } = input;
+  const card = cardRect(at, p, ov, h);
+  const lead = leaderRect(at, p, ov);
+  let bad = 0;
+  let cost = pref + Math.abs(p.slide) * ov * 1.5 + p.lead * ov * 2;
+  if (p.dx !== undefined) cost += 300;
+  if (p.compact) cost += 40_000;
+  const gap = 6 * ov;
+  const own = at.frame ? [] : [at.rect];
+  for (const n of [...nodes, ...own]) {
+    if (overlaps(card, n, gap)) bad += area(grow(card, gap), n) + 100;
+    else cost += area(grow(card, 18 * ov), n) * 2; // a little breathing room
+  }
+  for (const n of nodes) if (overlaps(lead, n)) bad += area(lead, n) + 50;
+  for (const s of soft) cost += area(grow(card, 6 * ov), s) * 8;
+  // Edges: strongly avoided (the card would hide the wiring it's about), but not forbidden.
+  for (const l of lines) {
+    cost += area(grow(card, 4 * ov), l) * 40;
+    cost += area(lead, l) * 2;
+  }
+  if (safe) {
+    const out = card.w * card.h - area(card, safe);
+    if (canPan) {
+      // The camera will ease once: allowed only if the card and its node fit in view together.
+      const x0 = Math.min(card.x, at.rect.x);
+      const y0 = Math.min(card.y, at.rect.y);
+      const x1 = Math.max(card.x + card.w, at.rect.x + at.rect.w);
+      const y1 = Math.max(card.y + card.h, at.rect.y + at.rect.h);
+      if (x1 - x0 > safe.w || y1 - y0 > safe.h) bad += out + 1;
+      else cost += out * 1.5;
+    } else {
+      const t = 3 * ov;
+      if (out > 0 && (card.x < safe.x - t || card.y < safe.y - t || card.x + card.w > safe.x + safe.w + t || card.y + card.h > safe.y + safe.h + t)) bad += out;
     }
   }
-  // Hysteresis: a card that is still fine stays on its side.
-  if (kept && kept.s <= bestScore * 1.25 + 4000) return kept.p;
-  return best;
+  return { bad, cost };
+}
+
+const sameSpot = (a: Placement, b: Placement) => a.side === b.side && Math.abs(a.lead - b.lead) < 1 && !!a.compact === !!b.compact && a.dx === b.dx;
+
+/**
+ * The free side: never over a node, inside the safe area (or a pan away from
+ * it), clear of edges, short leader preferred; compact when space is tight.
+ * Null when nothing fits (the dot stands in), unless `force`.
+ */
+export function place(input: PlaceInput): Placement | null {
+  const { keep, h, force } = input;
+  const hC = input.hCompact ?? h;
+  const cands = candidates(input);
+  let best = null as { p: Placement; cost: number } | null;
+  let kept = null as { p: Placement; cost: number } | null;
+  let least = null as { p: Placement; bad: number; cost: number } | null;
+  for (const compact of [false, true]) {
+    const hh = compact ? hC : h;
+    for (const c of cands) {
+      for (const p of variants(input, c, compact, hh)) {
+        const { bad, cost } = judge(input, p, c.pref, hh);
+        if (bad > 0) {
+          if (force && (!least || bad < least.bad || (bad === least.bad && cost < least.cost))) least = { p, bad, cost };
+          continue;
+        }
+        if (!best || cost < best.cost) best = { p, cost };
+        if (keep && sameSpot(keep, p) && (!kept || cost < kept.cost)) kept = { p, cost };
+      }
+    }
+    // A full card that fits beats any compact one.
+    if (best && !best.p.compact) break;
+  }
+  if (!best) return force && least ? least.p : null;
+  // Hysteresis: a card that is still fine stays where it is.
+  if (kept && kept.cost <= best.cost * 1.25 + 4000) return kept.p;
+  return best.p;
 }
 
 /** Rough card height (card px) before the real one is measured. */
-export function estimateCardH(prompt: string, why: string | undefined, options: string[]): number {
-  const inner = CARD_W - 32;
+export function estimateCardH(prompt: string, why: string | undefined, options: string[], compact = false): number {
+  const inner = (compact ? COMPACT_W : CARD_W) - 32;
   const lines = (text: string, perLine: number) => Math.max(1, Math.ceil(text.length / perLine));
-  let h = 26 + 26 + lines(prompt, 38) * 21.3;
-  if (why) h += 6 + lines(why, 46) * 16.8;
+  let h = compact ? 20 + 24 + lines(prompt, 33) * 19.3 : 26 + 26 + lines(prompt, 38) * 21.3;
+  if (why && !compact) h += 6 + lines(why, 46) * 16.8;
   if (options.length) {
+    const per = compact ? 6.2 : 6.9;
+    const pad = compact ? 20 : 26;
+    const rowH = compact ? 22 : 28;
     let rows = 1;
     let x = 0;
     for (const o of options) {
-      const w = o.length * 6.9 + 26;
+      const w = Math.min(inner, o.length * per + pad);
       if (x > 0 && x + w > inner) {
         rows++;
         x = 0;
       }
-      x += w + 6;
+      x += w + (compact ? 5 : 6);
     }
-    h += 12 + rows * 28 + (rows - 1) * 6;
+    h += (compact ? 8 : 12) + rows * rowH + (rows - 1) * (compact ? 5 : 6);
   }
   return Math.round(h);
 }

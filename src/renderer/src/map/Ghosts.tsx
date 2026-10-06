@@ -8,6 +8,7 @@ import { resolveAnchor, useShownLayout } from './anchors';
 import { useCamera } from './context';
 import { roundedPath, union, type Rect } from './geometry';
 import { dedupeGhosts } from './ghostDedupe';
+import { holdGhosts, type Held } from './ghostHold';
 import { GH, GW, placeOnBareCanvas, placeOnMap, type GhostSpot, type Slots } from './ghostPlace';
 import { KindGlyph } from './glyphs';
 import { scopeKey } from './layout';
@@ -41,7 +42,9 @@ export function Ghosts() {
   const { layout, shown } = useShownLayout();
   const anchor = useMemo(() => (id?: string | null) => resolveAnchor(map, layout, shown, id), [map, layout, shown]);
 
-  const visible = useMemo(() => {
+  // Once shown, a ghost stays a moment (no flashes), and only the few likeliest show (ghostHold.ts).
+  const held = useRef<Map<string, Held>>(new Map());
+  const fresh = useMemo(() => {
     // One per proposal key (the model's sketch knows more than the lexicon), then:
     // a ghost belongs here when it relates to something visible in this scope (or the map is bare).
     const byKey = new Map<string, (typeof ghostMap)[string]>();
@@ -52,9 +55,22 @@ export function Ghosts() {
       if (!g.nearNodeId || !map.nodes[g.nearNodeId]) return shown === null || !Object.keys(layout?.nodes ?? {}).length;
       return g.nearNodeId === shown || !!anchor(g.nearNodeId);
     });
-    // Each idea once, and never one that's already on the map.
-    return dedupeGhosts(here, Object.values(map.nodes));
+    // Each idea once (the one already showing keeps its words), and never one that's already on the map.
+    return dedupeGhosts(here, Object.values(map.nodes), new Set(held.current.keys()));
   }, [ghostMap, map, shown, layout, anchor]);
+  const [tick, setTick] = useState(0);
+  const hold = useMemo(() => {
+    const r = holdGhosts(held.current, fresh, Date.now(), (k) => !!map.nodes[k]);
+    held.current = r.held;
+    return r;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fresh, map, tick]);
+  useEffect(() => {
+    if (hold.wakeIn === null) return;
+    const t = setTimeout(() => setTick((n) => n + 1), hold.wakeIn + 30);
+    return () => clearTimeout(t);
+  }, [hold]);
+  const visible = hold.shown;
 
   const cam = useCamera();
   const card = useMapLocal((st) => st.card);
@@ -67,6 +83,13 @@ export function Ghosts() {
     const key = scopeKey(shown);
     const nodes = layout ? Object.values(layout.nodes) : [];
     const content = union(nodes);
+    // A ghost that takes over another's idea ("Payments" → "Stripe") takes its spot too.
+    for (const [to, from] of hold.inherit) {
+      const slot = slots.current.get(from);
+      if (slot && !slots.current.has(to)) slots.current.set(to, slot);
+      const spot = prev.current.spots.get(from);
+      if (spot && !prev.current.spots.has(to)) prev.current.spots.set(to, spot);
+    }
     if (!content) return placeOnBareCanvas(visible, slots.current);
     if (prev.current.scope !== key) prev.current = { scope: key, spots: new Map() };
     const head = layout?.frame ? [{ x: layout.frame.x, y: layout.frame.y, w: layout.frame.w, h: 72 }] : [];

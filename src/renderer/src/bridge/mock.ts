@@ -373,6 +373,11 @@ export function createMockBridge(): IaeBridge {
     async listCommands() {
       return [
         { name: 'review', description: 'Review the current changes' },
+        {
+          name: 'code-review',
+          description: 'Review the current diff, or a PR number/branch/path target, for correctness bugs',
+          argumentHint: '[low|medium|high|xhigh|max|ultra] [--comment] [--fix] [--max-findings <n>] [target]',
+        },
         { name: 'security-review', description: 'Security review of pending changes' },
         { name: 'init', description: 'Write a CLAUDE.md for this codebase' },
         { name: 'simplify', description: 'Simplify recently changed code' },

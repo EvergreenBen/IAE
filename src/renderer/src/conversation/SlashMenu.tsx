@@ -91,9 +91,17 @@ export function SlashMenu({ items, active, loading, onPick, onHover }: Props) {
               onPick(c);
             }}
           >
-            <span className={styles.name}>/{c.name}</span>
-            {c.argumentHint && <span className={styles.hint}>{c.argumentHint}</span>}
-            <span className={styles.desc}>{c.description}</span>
+            <span className={styles.name} title={`/${c.name}`}>
+              /{c.name}
+            </span>
+            {c.argumentHint && (
+              <span className={styles.hint} title={c.argumentHint}>
+                {c.argumentHint}
+              </span>
+            )}
+            <span className={styles.desc} title={c.description}>
+              {c.description}
+            </span>
           </div>
         ))
       )}

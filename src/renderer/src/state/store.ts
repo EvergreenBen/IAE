@@ -30,6 +30,8 @@ export interface PermissionRequest {
   tool: string;
   summary: string;
   nodeId: string | null;
+  /** The untruncated request (the whole command), when the engine sends it. */
+  detail?: string;
 }
 
 export interface FileTouch {
@@ -258,17 +260,13 @@ export function reduce(s: IaeState, e: EngineEvent): Partial<IaeState> {
     case 'focus':
       return { camera: { nodeId: e.nodeId, mode: e.mode, seq: ++cameraSeq, source: 'lead' } };
 
-    case 'ghost/proposals': {
-      // Sketch proposals replace previous sketch proposals; lexicon ghosts stay
-      // (under their own keys, so neither source hides the other; the map dedupes).
-      const ghosts: Record<string, GhostProposal> = {};
-      for (const [k, g] of Object.entries(s.ghosts)) if (g.source === 'lexicon') ghosts[k] = g;
-      for (const p of e.proposals) if (!s.map.nodes[p.key]) ghosts[p.key] = p;
-      return { ghosts, ghostDraftId: e.draftId };
-    }
+    case 'ghost/proposals':
+      return foldSketch(s, e.draftId, e.proposals);
 
     case 'permission/request':
-      return { permissions: [...s.permissions.filter((p) => p.id !== e.id), { id: e.id, agentId: e.agentId, tool: e.tool, summary: e.summary, nodeId: e.nodeId }] };
+      return {
+        permissions: [...s.permissions.filter((p) => p.id !== e.id), { id: e.id, agentId: e.agentId, tool: e.tool, summary: e.summary, nodeId: e.nodeId, ...(e.detail ? { detail: e.detail } : {}) }],
+      };
     case 'permission/resolved':
       return { permissions: s.permissions.filter((p) => p.id !== e.id) };
 
@@ -281,6 +279,21 @@ export function reduce(s: IaeState, e: EngineEvent): Partial<IaeState> {
     case 'notice':
       return { notices: [...s.notices, { id: ++noticeSeq, level: e.level, text: e.text, at: Date.now() }].slice(-5) };
   }
+}
+
+/**
+ * Sketch proposals for one utterance accumulate: each answer from the sketcher
+ * covers the sentence so far, and an idea it leaves out the next time hasn't
+ * been unsaid (union by key, the newest proposal for a key wins). A new
+ * utterance starts a fresh set. Lexicon ghosts stay under their own keys, so
+ * neither source hides the other (the map dedupes).
+ */
+export function foldSketch(s: Pick<IaeState, 'ghosts' | 'ghostDraftId' | 'map'>, draftId: string, proposals: GhostProposal[]): Pick<IaeState, 'ghosts' | 'ghostDraftId'> {
+  const same = draftId === s.ghostDraftId;
+  const ghosts: Record<string, GhostProposal> = {};
+  for (const [k, g] of Object.entries(s.ghosts)) if (g.source === 'lexicon' || same) ghosts[k] = g;
+  for (const p of proposals) if (!s.map.nodes[p.key]) ghosts[p.key] = p;
+  return { ghosts, ghostDraftId: draftId };
 }
 
 export function applyEvent(e: EngineEvent): void {

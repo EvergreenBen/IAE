@@ -56,7 +56,29 @@ export interface Group {
   rows: Ranked[];
 }
 
-function scoreItem(q: string, item: PaletteItem): Omit<Ranked, 'item'> | null {
+const words = (text: string) => text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+
+/**
+ * A Claude Code command or skill only shows for a query that clearly names it:
+ * every term starts its name or a part of it ("rev" → code-review), spells the
+ * initials of its parts ("sr" → security-review), or starts a word of its
+ * description. Long skill descriptions would otherwise match almost anything
+ * ("postgres" finding update-config).
+ */
+export function namesCommand(q: string, name: string, description = ''): 'name' | 'description' | null {
+  const terms = q.toLowerCase().replace(/^\//, '').split(/\s+/).filter(Boolean);
+  if (!terms.length) return 'name';
+  const n = name.toLowerCase().replace(/^\//, '');
+  const parts = words(n);
+  const initials = parts.map((p) => p[0]).join('');
+  const inName = (t: string) => n.startsWith(t) || parts.some((p) => p.startsWith(t)) || (t.length >= 2 && initials.includes(t));
+  if (terms.every(inName)) return 'name';
+  const desc = words(description);
+  if (terms.every((t) => inName(t) || (t.length >= 3 && desc.some((w) => w.startsWith(t))))) return 'description';
+  return null;
+}
+
+function scoreItem(q: string, item: PaletteItem, loose: boolean): Omit<Ranked, 'item'> | null {
   if (item.path) {
     const m = fuzzyPath(q, item.path);
     if (!m) return null;
@@ -67,21 +89,26 @@ function scoreItem(q: string, item: PaletteItem): Omit<Ranked, 'item'> | null {
       hintHits: m.indices.filter((i) => i < cut),
     };
   }
+  // Claude Code's commands: only clear matches (namesCommand), unless the user typed "/" to browse them.
+  const named = item.section === 'claude' && !loose ? namesCommand(q, item.title, item.keywords) : 'name';
+  if (!named) return null;
   const m = fuzzy(q, item.title);
-  if (m) return { score: m.score + 2, titleHits: m.indices, hintHits: [] };
-  const words = [item.keywords, item.hint].filter(Boolean).join(' ');
-  if (words) {
-    const k = fuzzy(q, words, 0);
+  if (m && named === 'name') return { score: m.score + 2, titleHits: m.indices, hintHits: [] };
+  const text = [item.keywords, item.hint].filter(Boolean).join(' ');
+  if (text) {
+    const k = fuzzy(q, text, 0);
     if (k) return { score: k.score - 10, titleHits: [], hintHits: [] };
   }
-  return null;
+  return item.section === 'claude' ? { score: named === 'name' ? -5 : -10, titleHits: [], hintHits: [] } : null;
 }
 
 /**
  * Rank items for a query and group them by section. With an empty query the
- * sections come in a fixed, useful order; otherwise the best match leads.
+ * sections come in a fixed, useful order; otherwise the best match leads,
+ * except that Claude Code's commands always come after the map (nodes and
+ * files). `loose`: the user typed "/" and is browsing commands.
  */
-export function rank(items: PaletteItem[], query: string): Group[] {
+export function rank(items: PaletteItem[], query: string, loose = false): Group[] {
   const q = query.trim();
   if (!q) {
     return EMPTY_ORDER.map((section) => ({
@@ -95,7 +122,7 @@ export function rank(items: PaletteItem[], query: string): Group[] {
 
   const bySection = new Map<SectionId, Ranked[]>();
   for (const item of items) {
-    const r = scoreItem(q, item);
+    const r = scoreItem(q, item, loose);
     if (!r) continue;
     const list = bySection.get(item.section) ?? [];
     list.push({ item, ...r });
@@ -106,7 +133,8 @@ export function rank(items: PaletteItem[], query: string): Group[] {
     rows.sort((a, b) => b.score - a.score || a.item.title.localeCompare(b.item.title));
     groups.push({ section, rows: rows.slice(0, LIMIT[section]) });
   }
-  groups.sort((a, b) => b.rows[0].score - a.rows[0].score);
+  const after = (g: Group) => (g.section === 'claude' && groups.some((o) => o.section === 'nodes' || o.section === 'files') ? 1 : 0);
+  groups.sort((a, b) => after(a) - after(b) || b.rows[0].score - a.rows[0].score);
   return groups;
 }
 

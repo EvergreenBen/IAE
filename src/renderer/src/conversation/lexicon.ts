@@ -291,7 +291,10 @@ interface Hit {
   count: number;
 }
 
-function findHits(text: string): Hit[] {
+/** A word still being typed only counts when it is unmistakable ("postgres", not "cli" on its way to "client"). */
+const SURE_MID_WORD = 0.85;
+
+function findHits(text: string, openTail: boolean): Hit[] {
   const hits: Hit[] = [];
   for (const { concept, re } of compile()) {
     re.lastIndex = 0;
@@ -302,6 +305,7 @@ function findHits(text: string): Hit[] {
         re.lastIndex++;
         continue;
       }
+      if (openTail && m.index + m[0].length >= text.length && concept.confidence < SURE_MID_WORD) continue;
       if (NEGATION.test(text.slice(Math.max(0, m.index - 40), m.index))) continue;
       if (first === -1) first = m.index;
       count++;
@@ -344,8 +348,14 @@ function resolve(map: ArchMap, nodes: ArchNode[], prefs: Pref[] | undefined): st
 }
 
 export interface LexiconOptions {
-  /** Most proposals to return (default 5). */
+  /** Most proposals to return (default 6). */
   limit?: number;
+  /**
+   * The text is being typed: its last word may be unfinished ("A cl" → "cli" →
+   * "client"), so a match there waits for the word to end unless it is
+   * unmistakable. Voice drafts arrive in whole words and leave this off.
+   */
+  typing?: boolean;
 }
 
 /**
@@ -356,13 +366,14 @@ export interface LexiconOptions {
 export function lexiconProposals(text: string, map: ArchMap, opts: LexiconOptions = {}): GhostProposal[] {
   const clean = text.replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim();
   if (clean.length < 2) return [];
+  const openTail = !!opts.typing && /[\w]$/.test(text);
   const names = existingNames(map);
   // Shallow, ordered nodes first so "near" picks the obvious one.
   const nodes = Object.values(map.nodes).sort((a, b) => depth(map, a) - depth(map, b) || (a.order ?? 99) - (b.order ?? 99) || a.createdAt - b.createdAt);
 
   const out: GhostProposal[] = [];
   const seen = new Set<string>();
-  for (const hit of findHits(clean).sort((a, b) => a.index - b.index)) {
+  for (const hit of findHits(clean, openTail).sort((a, b) => a.index - b.index)) {
     const { concept } = hit;
     const key = slug(concept.label);
     if (seen.has(key) || names.has(norm(key)) || names.has(norm(concept.label))) continue;
@@ -379,7 +390,7 @@ export function lexiconProposals(text: string, map: ArchMap, opts: LexiconOption
       source: 'lexicon',
     });
   }
-  return out.slice(0, opts.limit ?? 5);
+  return out.slice(0, opts.limit ?? 6);
 }
 
 /** True when two proposal lists would draw the same ghosts (avoids store churn). */

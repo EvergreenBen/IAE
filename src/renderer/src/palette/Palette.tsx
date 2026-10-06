@@ -135,7 +135,7 @@ function PalettePanel() {
   const groups: Group[] = useMemo(() => {
     if (slashQ) {
       const claude = items.filter((i) => i.section === 'claude');
-      if (slashQ.name) return rank(claude, slashQ.name);
+      if (slashQ.name) return rank(claude, slashQ.name, true);
       return claude.length ? [{ section: 'claude', rows: claude.map((item) => ({ item, score: 0, titleHits: [], hintHits: [] })) }] : [];
     }
     return rank(items, query);

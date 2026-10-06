@@ -8,12 +8,13 @@ import { CrewMark } from '../avatar/CrewMark';
 import { bridge } from '../bridge';
 import { ui, useIae } from '../state/store';
 import { setActiveAgendaId } from './activeAgenda';
+import { orderAgenda } from './agendaPick';
 import { useAnchorFn, useShownLayout, type Anchor } from './anchors';
 import { useCamera } from './context';
 import { clamp, union, type Rect } from './geometry';
 import { Mark } from './glyphs';
 import { useMapLocal } from './mapStore';
-import { anchorPoint, CARD_W, cardRect, estimateCardH, HEAD, NOTCH, place, type Placement } from './questionPlace';
+import { anchorPoint, cardRect, cardW, estimateCardH, HEAD, NOTCH, place, type Placement } from './questionPlace';
 import s from './Questions.module.css';
 
 /** Edge polylines as thin rects (one per segment), for placement to keep clear of. */
@@ -36,25 +37,31 @@ export function Questions() {
   const pinned = useMapLocal((st) => st.pinnedAgenda);
   const later = useMapLocal((st) => st.later);
 
+  // The card that is up now: it stays up until something fresher or more urgent arrives (agendaPick.ts).
+  const current = useRef<string | null>(null);
   const { active, dots } = useMemo(() => {
     const open = agenda.filter((a) => a.status === 'open');
     const placed = open.map((item) => ({ item, at: anchor(item.nodeId) })).filter((x): x is { item: AgendaItem; at: Anchor } => !!x.at);
-    const rank = (x: { item: AgendaItem }) => x.item.priority - (later.includes(x.item.id) ? 10 : 0);
-    placed.sort((a, b) => rank(b) - rank(a) || a.item.createdAt - b.item.createdAt);
+    const live = (id: string) => {
+      const a = agents[id];
+      return !!a && a.status !== 'done' && a.status !== 'failed' && a.status !== 'stopped';
+    };
+    const ordered = orderAgenda(placed, { now: Date.now(), later, current: current.current, blocking: (i) => (i.blocking ?? []).some(live) });
     // A card speaks for its own node, or a child of a visible one ("In Groups").
     // Anything deeper is too far from what's on screen: its ancestor shows the dot.
     const near = (p: { item: AgendaItem; at: Anchor }) => p.at.frame || p.item.nodeId === p.at.id || map.nodes[p.item.nodeId ?? '']?.parentId === p.at.id;
-    const pin = placed.find((p) => p.item.id === pinned && near(p));
-    const card = pin ?? placed.find((p) => !later.includes(p.item.id) && near(p)) ?? null;
+    const pin = ordered.find((p) => p.item.id === pinned && near(p));
+    const card = pin ?? ordered.find((p) => !later.includes(p.item.id) && near(p)) ?? null;
     const dotMap = new Map<string, { at: Anchor; items: AgendaItem[] }>();
-    for (const p of placed) {
+    for (const p of ordered) {
       if (p.item.id === card?.item.id) continue;
       const cur = dotMap.get(p.at.id) ?? { at: p.at, items: [] };
       cur.items.push(p.item);
       dotMap.set(p.at.id, cur);
     }
     return { active: card, dots: [...dotMap.values()] };
-  }, [agenda, anchor, pinned, later, map]);
+  }, [agenda, agents, anchor, pinned, later, map]);
+  current.current = active?.item.id ?? null;
 
   const activeId = busy ? null : (active?.item.id ?? null);
   useEffect(() => setActiveAgendaId(activeId), [activeId]);
@@ -64,18 +71,29 @@ export function Questions() {
   const [settled, setSettled] = useState(0);
   useEffect(() => cam?.onSettle(() => setSettled((n) => n + 1)), [cam]);
 
-  // The card's real height (card px), once it has rendered; an estimate until then.
-  const [measured, setMeasured] = useState<{ id: string; h: number } | null>(null);
-  const onMeasure = useCallback((id: string, h: number) => setMeasured((m) => (m?.id === id && Math.abs(m.h - h) < 2 ? m : { id, h })), []);
-  const cardH = active ? (measured?.id === active.item.id ? measured.h : estimateCardH(active.item.prompt, active.item.why, active.item.options ?? [])) : 0;
+  // The card's real height (card px) in each layout, once it has rendered; an estimate until then.
+  const [measured, setMeasured] = useState<Record<string, number>>({});
+  const onMeasure = useCallback((id: string, compact: boolean, h: number) => {
+    const k = `${id}|${compact ? 1 : 0}`;
+    setMeasured((m) => (m[k] !== undefined && Math.abs(m[k] - h) < 2 ? m : { ...m, [k]: h }));
+  }, []);
+  const opts = active?.item.options ?? [];
+  const cardH = active ? (measured[`${active.item.id}|0`] ?? estimateCardH(active.item.prompt, active.item.why, opts)) : 0;
+  const compactH = active ? (measured[`${active.item.id}|1`] ?? estimateCardH(active.item.prompt, active.item.why, opts, true)) : 0;
+  const heightOf = (p: Placement) => (p.compact ? compactH : cardH);
+  const isMeasured = (id: string, p: Placement) => measured[`${id}|${p.compact ? 1 : 0}`] !== undefined;
+
+  // Nothing fits without covering the map: the dot stands in, and clicking it opens the card anyway.
+  const [forced, setForced] = useState<string | null>(null);
 
   const last = useRef<{ id: string; p: Placement } | null>(null);
   const panned = useRef(new Set<string>());
   const placement = useMemo(() => {
     if (!active || !layout || busy) return null;
-    const nodes = [...Object.values(layout.nodes).filter((n) => n.id !== active.at.id), ...layout.tiles];
+    // Files are things you click: a card never covers them either.
+    const nodes = [...Object.values(layout.nodes).filter((n) => n.id !== active.at.id), ...layout.tiles, ...layout.shelf];
     const head = layout.frame ? [{ x: layout.frame.x, y: layout.frame.y, w: layout.frame.w, h: 72 }] : [];
-    const soft: Rect[] = [...layout.stubs, ...layout.shelf, ...head, ...layout.edges.flatMap((e) => (e.label ? [e.label] : []))];
+    const soft: Rect[] = [...layout.stubs, ...head, ...layout.edges.flatMap((e) => (e.label ? [e.label] : []))];
     const lines = layout.edges.flatMap((e) => segmentRects(e.pts));
     const k = cam?.view.k ?? 1;
     const ov = clamp(k, 0.8, 1.2) / k;
@@ -93,16 +111,27 @@ export function Questions() {
       if (e.to === id) (Math.abs(b.x - r.x) < 2 ? ports.left : ports.right).push(b.y);
     }
     const canPan = !!cam && !panned.current.has(key) && performance.now() - cam.lastUserMove > 2500;
-    const p = place({ at: active.at, nodes, soft, lines, safe: cam?.safeWorld() ?? null, canPan, ov, h: cardH, marginX, marginL, keep, ports });
+    const force = forced === active.item.id;
+    const p = place({ at: active.at, nodes, soft, lines, safe: cam?.safeWorld() ?? null, canPan, ov, h: cardH, hCompact: compactH, marginX, marginL, keep, ports, force });
+    // Nothing fits while the user steers: worth another look once they let go (the camera may then make room).
+    if (!p) return { p: null, ov, retry: !!cam && !panned.current.has(key) && !canPan };
     // Only a placement made at rest, at the card's real size, is worth sticking to.
-    if (cam?.resting && measured?.id === active.item.id) last.current = { id: key, p };
-    return { p, ov };
+    if (cam?.resting && isMeasured(active.item.id, p)) last.current = { id: key, p };
+    return { p, ov, retry: false };
     // Recompute when the question, its anchor, its size or the layout changes, or the camera settles.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.item.id, active?.at.id, layout, cam, settled, cardH, busy]);
+  }, [active?.item.id, active?.at.id, layout, cam, settled, cardH, compactH, busy, forced]);
+
+  // No room while the user was steering: look again once they've let go (the camera may then make room).
+  const retry = !!placement?.retry;
+  useEffect(() => {
+    if (!cam || !retry) return;
+    const t = setTimeout(() => setSettled((n) => n + 1), Math.max(200, 2600 - (performance.now() - cam.lastUserMove)));
+    return () => clearTimeout(t);
+  }, [cam, retry, settled]);
 
   // Ghosts keep clear of the card.
-  const shownCard = active && placement && !busy ? cardRect(active.at, placement.p, placement.ov, cardH) : null;
+  const shownCard = active && placement?.p && !busy ? cardRect(active.at, placement.p, placement.ov, heightOf(placement.p)) : null;
   const cardKey = shownCard ? `${Math.round(shownCard.x)},${Math.round(shownCard.y)},${Math.round(shownCard.w)},${Math.round(shownCard.h)}` : '';
   useEffect(() => {
     useMapLocal.setState({ card: shownCard });
@@ -113,15 +142,23 @@ export function Questions() {
   // A new card that can't sit fully in view where it belongs (its node is low,
   // or near an edge): ease the camera just enough, once, unless the user is steering.
   useEffect(() => {
-    if (!cam || !active || !placement || busy || !cam.resting) return;
+    if (!cam || !active || !placement?.p || busy || !cam.resting) return;
     const key = `${active.item.id}@${active.at.id}`;
-    if (panned.current.has(key) || measured?.id !== active.item.id) return;
+    if (panned.current.has(key) || !isMeasured(active.item.id, placement.p)) return;
     panned.current.add(key);
     if (performance.now() - cam.lastUserMove < 2500) return;
-    const card = cardRect(active.at, placement.p, placement.ov, cardH);
+    const card = cardRect(active.at, placement.p, placement.ov, heightOf(placement.p));
     const to = cam.panToShow(union([card, active.at.rect]) ?? card);
     if (to) void cam.fly(to, 560);
-  }, [cam, active, placement, busy, measured, cardH]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cam, active, placement, busy, measured, cardH, compactH]);
+
+  // A forced card is forced once: the next question places normally.
+  useEffect(() => {
+    if (forced && forced !== active?.item.id) setForced(null);
+  }, [forced, active?.item.id]);
+
+  const fallback = !!active && !busy && !!placement && !placement.p;
 
   return (
     <>
@@ -154,12 +191,16 @@ export function Questions() {
           type="button"
           className={s.dotAnchor}
           data-active
+          data-fallback={fallback || undefined}
           data-nopan
           style={{ transform: `translate(${active.at.rect.x}px, ${active.at.rect.y}px)` }}
           title={active.item.prompt}
           onClick={(e) => {
             e.stopPropagation();
-            if (cam) void cam.fly(cam.centerOn(active.at.rect.x + active.at.rect.w / 2 + 160, active.at.rect.y + 90, 1), 640);
+            // Open the card: centre its node with room beside it, and show it even if it has to cover something.
+            setForced(active.item.id);
+            // (No closer than 1×: zoomed in on a crowded map there is no room beside anything.)
+            if (cam) void cam.fly(cam.centerOn(active.at.rect.x + active.at.rect.w / 2 + 160, active.at.rect.y + 90, Math.min(cam.view.k, 1)), 640);
           }}
         >
           <span className={s.ov}>
@@ -168,7 +209,7 @@ export function Questions() {
         </button>
       )}
       <AnimatePresence>
-        {active && !busy && placement && <Card key={active.item.id} item={active.item} at={active.at} placement={placement.p} agents={agents} onMeasure={onMeasure} />}
+        {active && !busy && placement?.p && <Card key={active.item.id} item={active.item} at={active.at} placement={placement.p} agents={agents} onMeasure={onMeasure} />}
       </AnimatePresence>
     </>
   );
@@ -185,10 +226,12 @@ function Card({
   at: Anchor;
   placement: Placement;
   agents: ReturnType<typeof useIae.getState>['agents'];
-  onMeasure: (id: string, h: number) => void;
+  onMeasure: (id: string, compact: boolean, h: number) => void;
 }) {
-  const { side, lead, dy, slide } = placement;
-  const point = anchorPoint(at, side, dy);
+  const { side, lead, dy, dx, slide } = placement;
+  const compact = !!placement.compact;
+  const W = cardW(placement);
+  const point = anchorPoint(at, side, dy, dx);
   const waiting = (item.blocking ?? []).map((id) => agents[id]).filter(Boolean);
   const map = useIae.getState().map;
   const where = item.nodeId && item.nodeId !== at.id ? map.nodes[item.nodeId]?.label : null;
@@ -199,12 +242,12 @@ function Card({
   useLayoutEffect(() => {
     const el = cardRef.current;
     if (!el) return;
-    const report = () => onMeasure(item.id, el.offsetHeight);
+    const report = () => onMeasure(item.id, compact, el.offsetHeight);
     report();
     const ro = new ResizeObserver(report);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [item.id, onMeasure]);
+  }, [item.id, compact, onMeasure]);
 
   // Offsets inside the counter-scaled overlay (card px). Mirrors questionPlace.cardRect.
   const pos =
@@ -213,8 +256,8 @@ function Card({
       : side === 'left'
         ? { right: lead, top: -(HEAD + slide) }
         : side === 'below'
-          ? { top: lead, left: NOTCH - CARD_W + slide }
-          : { bottom: lead, left: NOTCH - CARD_W + slide };
+          ? { top: lead, left: NOTCH - W + slide }
+          : { bottom: lead, left: NOTCH - W + slide };
 
   return (
     <motion.div
@@ -232,6 +275,7 @@ function Card({
           ref={cardRef}
           className={s.card}
           data-side={side}
+          data-compact={compact || undefined}
           data-agenda={item.id}
           style={pos}
           initial={{ opacity: 0, y: 8 }}
@@ -261,8 +305,11 @@ function Card({
               </button>
             </span>
           </div>
-          <p className={s.prompt}>{item.prompt}</p>
-          {item.why && <p className={s.why}>{item.why}</p>}
+          {/* Compact (tight spots): the why folds into the prompt's tooltip. */}
+          <p className={s.prompt} title={compact && item.why ? item.why : undefined}>
+            {item.prompt}
+          </p>
+          {item.why && !compact && <p className={s.why}>{item.why}</p>}
           {options.length > 0 && (
             <div className={s.options}>
               {options.map((o, i) => (

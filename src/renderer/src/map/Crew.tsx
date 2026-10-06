@@ -8,7 +8,11 @@ import { CrewMark } from '../avatar/CrewMark';
 import { bridge } from '../bridge';
 import { ui, useIae, type PermissionRequest } from '../state/store';
 import { useAnchorFn, type Anchor } from './anchors';
-import { Mark } from './glyphs';
+import { useCamera } from './context';
+import { clamp, overlaps, type Rect } from './geometry';
+import { useMapLocal } from './mapStore';
+import { tokenPoint, tokensByAnchor, usePermsOnMap } from './permHome';
+import { Permission } from './Permission';
 import s from './Crew.module.css';
 
 const GLIDE_X = { type: 'spring', stiffness: 120, damping: 18 } as const;
@@ -20,26 +24,30 @@ export function Crew() {
   const selected = useIae((st) => st.selectedNodeId);
   const anchor = useAnchorFn();
 
-  const placed: { a: AgentInfo; at: Anchor; i: number; n: number }[] = [];
-  const byAnchor = new Map<string, AgentInfo[]>();
-  const anchors = new Map<string, Anchor>();
-  for (const a of Object.values(agents)) {
-    if (a.role === 'lead' || !a.nodeId) continue;
-    const at = anchor(a.nodeId);
-    if (!at) continue;
-    anchors.set(at.id, at);
-    byAnchor.set(at.id, [...(byAnchor.get(at.id) ?? []), a]);
-  }
-  for (const [id, list] of byAnchor) {
-    list.sort((x, y) => x.startedAt - y.startedAt);
-    list.forEach((a, i) => placed.push({ a, at: anchors.get(id)!, i, n: list.length }));
-  }
+  const groups = tokensByAnchor(Object.values(agents), anchor);
+  const byAnchor = new Map([...groups].map(([id, g]) => [id, g.list]));
+  const anchors = new Map([...groups].map(([id, g]) => [id, g.at]));
+  const placed = [...groups.values()].flatMap(({ at, list }) => list.map((a, i) => ({ a, at, i })));
+  // A prompt hangs off its token while the token is on screen; otherwise it shows in the chrome (permHome.ts).
+  const onMap = usePermsOnMap();
+
+  // A token's hover card opens above it, unless the question card is there: then below, so "Stop" stays in reach.
+  const card = useMapLocal((st) => st.card);
+  const cam = useCamera();
+  const k = cam?.view.k ?? 1;
+  const ov = clamp(k, 0.8, 1.2) / k;
+  const tipBelow = (at: Anchor, i: number) => {
+    if (!card) return false;
+    const p = tokenPoint(at, i, ov);
+    const tip: Rect = { x: p.x - 140 * ov, y: p.y - 120 * ov, w: 280 * ov, h: 110 * ov };
+    return overlaps(tip, card);
+  };
 
   return (
     <>
       <AnimatePresence>
         {placed.map(({ a, at, i }) => (
-          <Token key={a.id} agent={a} at={at} index={i} perm={permissions.find((p) => p.agentId === a.id) ?? null} />
+          <Token key={a.id} agent={a} at={at} index={i} perm={onMap.has(a.id) ? (permissions.find((p) => p.agentId === a.id) ?? null) : null} below={tipBelow(at, i)} />
         ))}
       </AnimatePresence>
       {[...byAnchor.entries()].map(([id, list]) => {
@@ -67,7 +75,7 @@ export function Crew() {
   );
 }
 
-const Token = memo(function Token({ agent, at, index, perm }: { agent: AgentInfo; at: Anchor; index: number; perm: PermissionRequest | null }) {
+const Token = memo(function Token({ agent, at, index, perm, below }: { agent: AgentInfo; at: Anchor; index: number; perm: PermissionRequest | null; below: boolean }) {
   // Dock on the top edge, inset from the right corner. Frames dock lower, beside the title row.
   const x = at.rect.x + at.rect.w - (at.frame ? 30 : 18);
   const y = at.rect.y + (at.frame ? 36 : 0);
@@ -95,9 +103,9 @@ const Token = memo(function Token({ agent, at, index, perm }: { agent: AgentInfo
             >
               <CrewMark hue={agent.hue} name={agent.name} size={22} state={state} />
             </button>
-            <AgentCard agent={agent} className={s.tip} />
+            <AgentCard agent={agent} className={s.tip} below={below} />
           </div>
-          <AnimatePresence>{perm && index === 0 && <Permission key={perm.id} perm={perm} />}</AnimatePresence>
+          <AnimatePresence>{perm && <Permission key={perm.id} perm={perm} keepInView />}</AnimatePresence>
         </div>
       </div>
     </motion.div>
@@ -108,11 +116,11 @@ const Token = memo(function Token({ agent, at, index, perm }: { agent: AgentInfo
  * What a builder is doing, and a quiet way to stop it. Shown on hover (or
  * keyboard focus) of its token, on the map and in the chrome.
  */
-export function AgentCard({ agent, where, className }: { agent: AgentInfo; where?: string | null; className?: string }) {
+export function AgentCard({ agent, where, className, below }: { agent: AgentInfo; where?: string | null; className?: string; below?: boolean }) {
   const live = agent.status !== 'done' && agent.status !== 'failed' && agent.status !== 'stopped';
   const doing = agent.status === 'waiting' ? 'Waiting on you' : agent.status === 'done' ? (agent.result ?? 'Done') : agent.task;
   return (
-    <span className={`${s.card} ${className ?? ''}`} onClick={(e) => e.stopPropagation()}>
+    <span className={`${s.card} ${className ?? ''}`} data-below={below || undefined} onClick={(e) => e.stopPropagation()}>
       <span className={s.tipName}>
         {agent.name}
         {where && <span className={s.tipWhere}> · {where}</span>}
@@ -125,43 +133,5 @@ export function AgentCard({ agent, where, className }: { agent: AgentInfo; where
         </button>
       )}
     </span>
-  );
-}
-
-function permissionText(p: PermissionRequest): { verb: string; code?: string } {
-  const sum = p.summary.trim().replace(/\?$/, '');
-  if (/^bash$/i.test(p.tool)) return { verb: 'Run', code: sum.replace(/^run\s+/i, '') };
-  return { verb: sum };
-}
-
-export function Permission({ perm }: { perm: PermissionRequest }) {
-  const t = permissionText(perm);
-  return (
-    <motion.div
-      className={s.perm}
-      data-nopan
-      initial={{ opacity: 0, x: -4 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, transition: { duration: 0.16 } }}
-      transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <span className={s.permText}>
-        {t.verb}
-        {t.code && (
-          <>
-            {' '}
-            <code className={s.code}>{t.code}</code>
-          </>
-        )}
-        ?
-      </span>
-      <button type="button" className={s.allow} aria-label="Allow" title="Allow" onClick={() => void bridge.resolvePermission(perm.id, 'allow')}>
-        <Mark name="check" size={12} />
-      </button>
-      <button type="button" className={s.deny} aria-label="Deny" title="Deny" onClick={() => void bridge.resolvePermission(perm.id, 'deny')}>
-        <Mark name="cross" size={11} />
-      </button>
-    </motion.div>
   );
 }

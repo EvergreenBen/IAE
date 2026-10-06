@@ -99,8 +99,8 @@ describe('lexicon', () => {
     expect(labels('a postgres')).toEqual(['Postgres']);
   });
 
-  it('caps the number of proposals', () => {
-    expect(lexiconProposals('auth billing search chat polls comments feed maps', emptyMap()).length).toBe(5);
+  it('caps the number of proposals (as many as the map shows at once)', () => {
+    expect(lexiconProposals('auth billing search chat polls comments feed maps', emptyMap()).length).toBe(6);
   });
 
   it('compares proposal lists cheaply', () => {
@@ -108,5 +108,17 @@ describe('lexicon', () => {
     const b = lexiconProposals('stripe and redis!', emptyMap());
     expect(sameProposals(a, b)).toBe(true);
     expect(sameProposals(a, a.slice(1))).toBe(false);
+  });
+
+  it('while typing, a half-typed last word waits until it is finished', () => {
+    const typed = (t: string) => lexiconProposals(t, emptyMap(), { typing: true }).map((p) => p.label);
+    expect(typed('A cli')).toEqual([]); // could be "client"
+    expect(typed('A cli ')).toEqual(['CLI']);
+    expect(typed('A client app')).toEqual([]);
+    expect(typed('trips in postgres')).toEqual(['Postgres']); // unmistakable
+    expect(typed('a mobile app and an api')).toEqual(['Mobile App']);
+    expect(typed('a mobile app and an api,')).toEqual(['Mobile App', 'API']);
+    // Spoken drafts arrive in whole words.
+    expect(labels('A cli')).toEqual(['CLI']);
   });
 });
