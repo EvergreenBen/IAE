@@ -75,6 +75,8 @@ app.whenReady().then(async () => {
   }
 
   installMenu();
+  // In dev the Dock shows Electron's icon; give it Archie's.
+  if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(join(here, '../../build/icon.png'));
   registerIpc(engine);
   createWindow();
   void engine.boot();
