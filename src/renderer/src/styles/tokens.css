@@ -1,6 +1,11 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    IAE design tokens. The single source of visual truth — see docs/DESIGN.md.
-   Light, warm, quiet. Paper and ink, one clay accent. Colour means something.
+   Dark, cool, quiet. Deep canvas and light ink, one bright blue accent.
+   Geometry is circular: discs and rings, never rounded squares.
+
+   Note on names: `--paper-*` are the canvas layers (now dark) and `--ink-*` the
+   foreground (now light). The roles did not change when the theme inverted, so
+   the names did not either.
    ───────────────────────────────────────────────────────────────────────────── */
 
 @import '@fontsource-variable/inter';
@@ -9,53 +14,59 @@
 @import '@fontsource-variable/newsreader/wght-italic.css';
 
 :root {
-  /* Paper — the canvas and its layers */
-  --paper: #f5f3ee; /* canvas */
-  --paper-raised: #fbfaf7; /* nodes, cards */
-  --paper-sunk: #eeebe4; /* wells, inputs at rest */
-  --paper-dot: rgba(60, 50, 30, 0.09); /* dot grid */
+  color-scheme: dark;
+
+  /* Canvas and its layers — deep blue-black, never flat grey */
+  --paper: #070b14; /* canvas */
+  --paper-raised: #0e1726; /* nodes, cards */
+  --paper-sunk: #040710; /* wells, inputs at rest — recedes */
+  --paper-lift: rgba(118, 178, 255, 0.1); /* hover, selection, pressed — rises.
+     Translucent, so it lifts over the canvas and over a raised panel alike. */
+  --paper-dot: rgba(104, 173, 255, 0.1); /* dot grid */
 
   /* Ink — text and lines */
-  --ink: #1d1c1a;
-  --ink-2: #57544e; /* secondary text */
-  --ink-3: #736f67; /* tertiary, captions, placeholders (4.5:1 on paper: small text stays readable) */
-  --ink-4: #b9b4aa; /* disabled, faint glyphs */
-  --line: #e2ded5; /* hairlines, node borders */
-  --line-strong: #cfc9bd; /* edges, focused borders */
+  --ink: #e9f1fb;
+  --ink-2: #a8bdd6; /* secondary text */
+  --ink-3: #8299b5; /* tertiary, captions, placeholders (AA on canvas at small sizes) */
+  --ink-4: #465972; /* disabled, faint glyphs */
+  --line: rgba(118, 178, 255, 0.15); /* hairlines, node rims */
+  --line-strong: rgba(118, 178, 255, 0.34); /* edges, focused rims */
 
-  /* Accent — clay. Used for: the lead, questions that need you, primary actions. Nothing else. */
-  --clay: #cc785c;
-  --clay-ink: #a9573c; /* clay text on paper (AA) */
-  --clay-wash: #f6e7df; /* clay background tint */
-  --clay-glow: rgba(204, 120, 92, 0.18);
+  /* Accent — bright blue. Used for: the lead, questions that need you, primary
+     actions. Nothing else: no node kind or agent hue sits on it. */
+  --accent: #4cc2ff;
+  --accent-ink: #84d4ff; /* accent text on canvas (AA) */
+  --accent-wash: rgba(76, 194, 255, 0.12); /* accent background tint */
+  --accent-glow: rgba(76, 194, 255, 0.34);
 
   /* Status */
-  --ok: #5e8b6a; /* built */
-  --ok-wash: #e6efe6;
-  --warn: #c49a3a;
-  --warn-wash: #f5ecd6;
-  --bad: #b8574b; /* broken */
-  --bad-wash: #f5e2de;
+  --ok: #3ddc97; /* built */
+  --ok-wash: rgba(61, 220, 151, 0.13);
+  --warn: #ffc857;
+  --warn-wash: rgba(255, 200, 87, 0.13);
+  --bad: #ff6b6b; /* broken */
+  --bad-wash: rgba(255, 107, 107, 0.13);
 
-  /* Agents — muted, distinguishable, never neon. Index = AgentInfo.hue */
-  --agent-0: #6f8fb0; /* slate blue */
-  --agent-1: #6f9a7a; /* sage */
-  --agent-2: #b48a3e; /* ochre */
-  --agent-3: #9a7aa6; /* plum */
-  --agent-4: #4f9a9a; /* teal */
-  --agent-5: #b07a6a; /* rosewood */
+  /* Agents — bright and distinguishable, all kept clear of the accent's hue.
+     Index = AgentInfo.hue */
+  --agent-0: #7aa2ff; /* periwinkle */
+  --agent-1: #4ade80; /* spring */
+  --agent-2: #fbbf24; /* amber */
+  --agent-3: #c084fc; /* violet */
+  --agent-4: #2dd4bf; /* teal */
+  --agent-5: #fb7185; /* rose */
 
-  /* Node kinds — a whisper of tint on the glyph only, never the whole node */
-  --kind-system: #57544e;
-  --kind-client: #6f8fb0;
-  --kind-service: #6f9a7a;
-  --kind-module: #8d8980;
-  --kind-data: #b48a3e;
-  --kind-queue: #4f9a9a;
-  --kind-external: #9a7aa6;
-  --kind-config: #a3828f; /* dusty rose: kept clear of clay */
-  --kind-infra: #7d7a72;
-  --kind-ai: #7d78b8; /* iris: clay belongs to the lead */
+  /* Node kinds — a whisper of tint on the glyph only, never the whole disc */
+  --kind-system: #a8bdd6;
+  --kind-client: #7aa2ff;
+  --kind-service: #4ade80;
+  --kind-module: #8ca3bd;
+  --kind-data: #fbbf24;
+  --kind-queue: #2dd4bf;
+  --kind-external: #c084fc;
+  --kind-config: #d8a8d8; /* orchid: kept clear of the accent */
+  --kind-infra: #7e8da0;
+  --kind-ai: #a78bfa; /* iris: the accent belongs to the lead */
 
   /* Type */
   --font-ui: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
@@ -80,17 +91,30 @@
   --s-7: 48px;
   --s-8: 64px;
 
-  /* Shape */
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
-  --r-xl: 20px;
+  /* Shape — round by default. --r-disc is the real circle; the rest are the
+     generous radii that keep small chrome consistent with it. */
+  --r-disc: 50%;
+  --r-sm: 8px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --r-xl: 32px;
   --r-pill: 999px;
+  --r-frame: 44px; /* the scope frame: a boundary, so generously round, not a disc */
 
-  /* Depth — soft, low, warm. Never a hard drop shadow. */
-  --shadow-1: 0 1px 1px rgba(40, 30, 10, 0.04), 0 1px 3px rgba(40, 30, 10, 0.04);
-  --shadow-2: 0 1px 2px rgba(40, 30, 10, 0.05), 0 6px 18px rgba(40, 30, 10, 0.06);
-  --shadow-3: 0 2px 4px rgba(40, 30, 10, 0.05), 0 18px 48px rgba(40, 30, 10, 0.1);
+  /* Depth — on a dark canvas depth reads as a lit rim plus a cast glow, not as
+     a drop shadow. Never a hard black edge. */
+  --shadow-1:
+    0 1px 2px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(118, 178, 255, 0.04);
+  --shadow-2:
+    0 2px 6px rgba(0, 0, 0, 0.5), 0 10px 28px rgba(0, 0, 0, 0.42),
+    0 0 22px rgba(76, 194, 255, 0.06);
+  --shadow-3:
+    0 4px 10px rgba(0, 0, 0, 0.5), 0 22px 56px rgba(0, 0, 0, 0.55),
+    0 0 44px rgba(76, 194, 255, 0.08);
+
+  /* Glow — for the accent and for agent hues (set --hue, then use the ring). */
+  --glow-soft: 0 0 18px var(--accent-glow);
+  --glow-ring: 0 0 0 1px var(--accent), 0 0 16px var(--accent-glow);
 
   /* Motion — calm, physical. Nothing pulses for attention. */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);

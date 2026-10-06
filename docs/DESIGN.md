@@ -20,9 +20,13 @@ rules hold for every surface.
   "look at this", unless you've been steering in the last few seconds (then it
   only rings the node, if it's on screen). Nothing loops for attention: no
   pulsing orbs, spinners or shimmer.
-- **Calm colour.** Paper, ink, and one clay accent. Clay means *the lead* or
-  *this needs you*, so no node kind or agent is tinted clay. Agents get muted hues. Status is told by line style (dashed =
-  planned) more than by colour.
+- **Calm colour.** A dark canvas, light ink, and one bright blue accent. The
+  accent means *the lead* or *this needs you*, so no node kind or agent is tinted
+  with it. Agents get bright, distinguishable hues kept clear of the accent.
+  Status is told by line style (dashed = planned) more than by colour.
+- **Round, not rectangular.** Nodes and figures are discs and rings. Only
+  surfaces that must hold running text — the scope frame, cards, sheets, file
+  tiles — stay rectangles, and then with a generous radius.
 
 ## 2. Tokens
 
@@ -38,13 +42,14 @@ Sans marks controls and labels.
 ┌──────────────────────────────────────────────────────────────────────┐
 │ ●●●   Recipe Box / API / Auth                        (A)(K)    ⌘K   │ chrome: transparent, drag region
 │                                                                      │
-│                  ┌────────┐        ┌────────┐                        │
-│                  │ Pages  │───────▶│  Auth  │ (A)                    │
-│                  └────────┘        └────────┘   ╭─────────────────╮  │
-│                                         ╲      │ Keep cookie      │  │ question card,
-│                                          ╲─────│ sessions or move │  │ anchored to Auth
-│                                                 │ to tokens?       │  │
-│                                                 ╰─────────────────╯  │
+│                   ╭───╮            ╭───╮                             │
+│                  ( Pages )──────▶ (  Auth ) (A)                      │ nodes are discs
+│                   ╰───╯            ╰───╯                             │
+│                 web entry      Google sign-in      ╭──────────────╮  │ caption, under the disc
+│                                      ┆             │ Keep cookie  │  │ question card,
+│                                      ┆·············│ sessions or  │  │ anchored to Auth,
+│                                                    │ move to      │  │ led from the rim
+│                                                    ╰──────────────╯  │
 │                                                                      │
 │                Ada is reworking session expiry in Auth.              │ caption (serif)
 │              (Archie)[ Ask, decide, or describe a change…      ◦ ]   │ intent line
@@ -94,18 +99,24 @@ whole map. Keep it stable by seeding ELK with prior positions (or
 
 ### Nodes
 
-- Card: `--paper-raised`, 1px `--line`, radius `--r-lg`, `--shadow-1`.
-- **Leaf** node (no children) is about 200×72. **Container** node (has
-  children) is about 236×120 and shows up to four tiny child chips plus "+N" so
-  depth is visible before diving.
-- Content: a kind glyph (16px line icon, tinted `--kind-*`), the label (14px,
-  weight 560), a one-line summary (12.5px `--ink-2`, ellipsis), and a file count
-  in the corner (`--ink-3`, mono 11px).
-- **Status by line**: *planned* has a dashed `--line-strong` border, translucent
-  fill and an `--ink-2` label. *Building* has a slow sheen travelling along the
-  border in the working agent's hue (one sweep per ~2.4s, low contrast). *Built*
-  is solid. *Broken* has a `--bad` border and a small mark.
-- Hover: lift 1px, `--shadow-2`. Selected: 2px `--clay` ring at 35% opacity.
+- **A node is a disc.** `--paper-raised` with a soft radial lift, a 1px `--line`
+  rim, and a second fainter ring inset inside it — the quiet HUD doubling.
+- **Leaf** node (no children) is 140px across. **Container** node (has children)
+  is 180px and carries a *third* ring outside the rim, so depth is visible before
+  diving.
+- **Inside the disc** (centred, max 70% of the diameter so the words keep clear
+  of the curve): a kind glyph (tinted `--kind-*`), the label (12.5px, weight 560,
+  up to two lines; 14px on a container), and the file count under it (`--ink-3`,
+  mono 10px).
+- **Under the disc**, in a caption 212px wide: the one-line summary (11px
+  `--ink-2`, ellipsis) and, for a container, up to four child chips plus "+N".
+  A circle has no room for running text, so the text sits outside it; `CAPTION`
+  in `layoutTypes.ts` is the room this needs, and ELK's node spacing leaves it.
+- **Status by line**: *planned* has a dashed `--line-strong` rim, translucent
+  fill and an `--ink-2` label. *Building* has a slow sheen travelling around the
+  rim in the working agent's hue (one sweep per ~2.4s, low contrast). *Built* is
+  solid. *Broken* has a `--bad` rim and a small mark at 4 o'clock.
+- Hover: scale 1.025, `--shadow-2`. Selected: an `--accent` rim with a soft glow.
   Selecting a node scopes the conversation ("About Auth…").
 - **Activity bloom**: when an agent touches a file under a node, the visible
   ancestor gets one soft ring in the agent's hue that expands and fades
@@ -149,7 +160,8 @@ token, such as "Run `npm test`?", with ✓ and ✕.
 ### Ghost nodes (architecture autocomplete)
 
 While the user speaks or types, likely components appear as **ghosts**. A ghost
-has a dashed clay outline, a clay-ink label in serif italic and 55% opacity. It
+is the same disc drawn in dashes: an `--accent` outline, an `--accent-ink` label
+in serif italic, a faint outward glow and 55% opacity. It
 fades in near the node it relates to, and dashed ghost edges hint at its
 connections. When the lead commits the node with the same id, the ghost
 **becomes** the node in place. When the utterance ends without it, the ghost
@@ -164,15 +176,17 @@ while it can, so ghosts never reshuffle as more arrive. This makes "every word m
 
 The open agenda item with the highest priority appears as a **question card**
 anchored to its node: a small card (≤ 300px) offset to the free side, clear of
-nodes and edges, joined by a short dotted clay leader (dotted and clay so it
-never reads as one more edge). It has a clay left rule, the prompt in serif 15px, the
+nodes and edges, joined by a short dotted accent leader (dotted and accent so it
+never reads as one more edge). The leader leaves from the disc's rim — and below
+a node, from under its caption, so it never crosses the node's own words. The
+card has an accent left rule, the prompt in serif 15px, the
 `why` in 12px `--ink-3`, and 2–4 option pills. The first pill is the
-recommendation (clay-wash fill), the rest are outlined. It also has "later" and
+recommendation (`--accent-wash` fill), the rest are outlined. It also has "later" and
 "×". **Only one card is visible at a time.** A card never sits under the chrome
 or the conversation zone: it slides along its side, picks another side, or the
 camera eases once to make room (never while the user is steering). Zoomed far
 out (below about 0.38×) the card steps aside and its dot stands in. Other open
-items show as small clay dots on their nodes. A card shows when its node is
+items show as small accent dots on their nodes. A card shows when its node is
 visible, or one level inside a visible node (eyebrow "In Groups"); deeper than
 that, the visible ancestor shows the dot, and clicking it flies there. A card
 about the scope itself sits outside the frame, never over its children.
@@ -201,7 +215,7 @@ about the scope itself sits outside the frame, never over its children.
 
 ## 6. Archie, the lead
 
-Archie is an original character: a small, round, clay creature with two raised
+Archie is an original character: a small, round, accent-blue creature with two raised
 claws and two tall ink eyes. It has the warmth of the Claude Code crab but is
 not a copy of it. It is SVG, 40px on the intent line and 96px on Home. Builders
 belong to the same family: smaller (18px) and tinted with their hue.
@@ -225,7 +239,9 @@ Click a file and a sheet rises from the bottom over a lightly dimmed map
 - Header: the path in mono, with directories in `--ink-3` and the filename in
   ink. It also has the owning node as a chip (click to focus the node), a
   `Code · Meaning` toggle, and close.
-- **Code**: CodeMirror 6 with a paper theme. Keywords are clay-ink, strings
+- **Code**: CodeMirror 6 on the lens, themed from the tokens (it declares
+  `dark: true` so CodeMirror never reaches for its light base styles). Keywords
+  are accent, strings
   sage, numbers ochre and comments ink-3 italic. It is editable, and ⌘S saves
   with a quiet "Saved".
 - **.env files** get a key/value editor. Each row has `KEY` in mono, a value

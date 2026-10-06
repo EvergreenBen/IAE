@@ -23,7 +23,8 @@ Read these before making product or design decisions:
 1. **The map is the interface.** There are no panels, sidebars or file trees.
    Files live *inside* the nodes that own them. To find `.env` you open Backend,
    then Config, and the file is there. Everything has a place you can point at.
-2. **Quiet by default.** Light paper, ink, and one clay accent. Show as little
+2. **Quiet by default.** A dark canvas, light ink, and one bright blue accent.
+   Geometry is circular — discs and rings, never rounded squares. Show as little
    text as possible. If something needs the user, it appears *where it applies*
    (on its node), not in a list.
 3. **No idle time on either side.** While agents build, the lead uses the time
@@ -110,8 +111,10 @@ Per-project state lives in the user's project at `<project>/.iae/`
   `applyOps`.
 - **Styling:** CSS Modules (`Thing.module.css`) next to components, and only the
   variables in `styles/tokens.css`. No raw hex values in components, no
-  Tailwind, no UI kits. Clay (`--clay`) is reserved for the lead, things that
-  need the user, and primary actions.
+  Tailwind, no UI kits. The accent (`--accent`) is reserved for the lead, things
+  that need the user, and primary actions. `--paper-sunk` recedes (wells, inputs
+  at rest); `--paper-lift` rises (hover, selection) — on a dark canvas those are
+  opposites, so don't use one for the other.
 - **Components select narrowly** from the store: `useIae((s) => s.map)`.
 - **Copy:** sentence case, short and human. No exclamation marks, no emoji, no
   "AI" word salad. Agents have names (Ada, Kit, …), not "Agent 3".

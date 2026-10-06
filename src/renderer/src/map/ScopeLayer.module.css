@@ -37,7 +37,7 @@
   left: 0;
   top: 0;
   border: 1px solid var(--line);
-  border-radius: var(--r-xl);
+  border-radius: var(--r-frame);
   background: color-mix(in srgb, var(--paper-raised) 42%, transparent);
 }
 .frame[data-status='planned'] {

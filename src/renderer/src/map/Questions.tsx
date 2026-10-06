@@ -1,6 +1,6 @@
 // Questions live where they apply. Exactly one card at a time: the most
 // important open item visible in this scope, anchored to its node on the free
-// side with a thin leader. Every other open item is a small clay dot.
+// side with a thin leader. Every other open item is a small accent dot.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { AgendaItem } from '@shared/model';
@@ -13,6 +13,7 @@ import { useAnchorFn, useShownLayout, type Anchor } from './anchors';
 import { useCamera } from './context';
 import { clamp, union, type Rect } from './geometry';
 import { Mark } from './glyphs';
+import { withCaption } from './layoutTypes';
 import { useMapLocal } from './mapStore';
 import { anchorPoint, cardRect, cardW, estimateCardH, HEAD, NOTCH, place, type Placement } from './questionPlace';
 import s from './Questions.module.css';
@@ -91,7 +92,7 @@ export function Questions() {
   const placement = useMemo(() => {
     if (!active || !layout || busy) return null;
     // Files are things you click: a card never covers them either.
-    const nodes = [...Object.values(layout.nodes).filter((n) => n.id !== active.at.id), ...layout.tiles, ...layout.shelf];
+    const nodes = [...Object.values(layout.nodes).filter((n) => n.id !== active.at.id).map(withCaption), ...layout.tiles, ...layout.shelf];
     const head = layout.frame ? [{ x: layout.frame.x, y: layout.frame.y, w: layout.frame.w, h: 72 }] : [];
     const soft: Rect[] = [...layout.stubs, ...head, ...layout.edges.flatMap((e) => (e.label ? [e.label] : []))];
     const lines = layout.edges.flatMap((e) => segmentRects(e.pts));

@@ -1,5 +1,5 @@
 // Architecture autocomplete: tentative nodes sketched while the user talks.
-// Dashed clay, serif italic, translucent. When the lead commits a node with the
+// Dashed accent, serif italic, translucent. When the lead commits a node with the
 // same id, the real node grows from the ghost's spot (see ScopeLayer).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
@@ -12,6 +12,7 @@ import { holdGhosts, type Held } from './ghostHold';
 import { GH, GW, placeOnBareCanvas, placeOnMap, type GhostSpot, type Slots } from './ghostPlace';
 import { KindGlyph } from './glyphs';
 import { scopeKey } from './layout';
+import { withCaption } from './layoutTypes';
 import { useMapLocal } from './mapStore';
 import s from './Ghosts.module.css';
 
@@ -81,7 +82,7 @@ export function Ghosts() {
 
   const placed = useMemo((): GhostSpot[] => {
     const key = scopeKey(shown);
-    const nodes = layout ? Object.values(layout.nodes) : [];
+    const nodes = layout ? Object.values(layout.nodes).map(withCaption) : [];
     const content = union(nodes);
     // A ghost that takes over another's idea ("Payments" → "Stripe") takes its spot too.
     for (const [to, from] of hold.inherit) {
@@ -174,7 +175,7 @@ export function Ghosts() {
             transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
             style={{ width: W, height: H }}
           >
-            <KindGlyph kind={p.g.kind} tint="var(--clay-ink)" />
+            <KindGlyph kind={p.g.kind} tint="var(--accent-ink)" />
             <span className={s.label}>{p.g.label}</span>
           </motion.div>
         ))}

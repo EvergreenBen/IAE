@@ -41,7 +41,7 @@
   color: var(--ink-3);
 }
 .close:hover {
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
   color: var(--ink-2);
 }
 

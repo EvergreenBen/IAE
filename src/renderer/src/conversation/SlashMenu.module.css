@@ -34,7 +34,7 @@
   overflow: hidden;
 }
 .item[data-active] {
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
 }
 
 /* One line each: the name, then the argument hint (never more than ~30% of the

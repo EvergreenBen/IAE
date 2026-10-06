@@ -1,4 +1,4 @@
-// Archie: the lead's companion. A small, round clay creature with two raised
+// Archie: the lead's companion. A small, round accent-blue creature with two raised
 // claws and two tall ink eyes. Hand-authored SVG on a 40-unit grid, so it is
 // pixel-true at 40px (intent line) and scales cleanly to 96px (home).
 //

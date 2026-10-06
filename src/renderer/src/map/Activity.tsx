@@ -1,6 +1,6 @@
 // Motion that means something happened: a soft bloom when an agent touches a
 // file under a node, a single dot along an edge when work moves between nodes,
-// a brief clay ring when the lead points at something. Nothing loops.
+// a brief accent ring when the lead points at something. Nothing loops.
 import { useEffect, useRef, useState } from 'react';
 import { ownerOf } from '@shared/map';
 import { useIae } from '../state/store';

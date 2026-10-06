@@ -3,12 +3,12 @@
   position: absolute;
   left: 0;
   top: 0;
-  border-radius: var(--r-lg);
+  border-radius: var(--r-disc);
   pointer-events: none;
 }
 .bloom[data-frame],
 .highlight[data-frame] {
-  border-radius: var(--r-xl);
+  border-radius: var(--r-frame);
 }
 
 /* One soft ring in the agent's hue: expands and fades, once. */
@@ -71,9 +71,9 @@
   }
 }
 
-/* The lead said "look here": a clay ring that settles and fades. */
+/* The lead said "look here": an accent ring that settles and fades. */
 .highlight {
-  box-shadow: 0 0 0 2px var(--clay);
+  box-shadow: 0 0 0 2px var(--accent);
   animation: point 1800ms var(--ease-out) both;
 }
 @keyframes point {

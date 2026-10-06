@@ -74,7 +74,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--clay);
+  background: var(--accent);
 }
 
 .saved {
@@ -127,7 +127,7 @@
 
 .close:hover {
   color: var(--ink);
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
 }
 
 /* A quiet header toggle (soft wrap). */
@@ -147,12 +147,12 @@
 
 .tool:hover {
   color: var(--ink-2);
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
 }
 
 .toolOn {
   color: var(--ink-2);
-  background: color-mix(in srgb, var(--paper-sunk) 70%, transparent);
+  background: color-mix(in srgb, var(--paper-lift) 70%, transparent);
 }
 
 /* ── body ────────────────────────────────────────────────────────────────── */
@@ -217,7 +217,7 @@
 }
 
 .ghostBtn:hover {
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
   color: var(--ink);
 }
 
@@ -252,7 +252,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--clay);
+  background: var(--accent);
   transform: translateY(-1px);
 }
 
@@ -318,7 +318,7 @@
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: var(--clay);
+  background: var(--accent);
   color: var(--paper-raised);
   transition:
     opacity var(--t-fast) var(--ease-out),
@@ -397,7 +397,7 @@
 }
 
 .textBtn:hover {
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
   color: var(--ink);
 }
 
@@ -405,12 +405,12 @@
   height: 32px;
   padding: 0 16px;
   border-radius: var(--r-pill);
-  background: var(--clay);
+  background: var(--accent);
   color: var(--paper-raised);
   font-size: var(--text-sm);
   font-weight: 560;
 }
 
 .primaryBtn:hover {
-  background: var(--clay-ink);
+  background: var(--accent-ink);
 }

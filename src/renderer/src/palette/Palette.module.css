@@ -83,7 +83,7 @@
 }
 
 .rowActive {
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
 }
 
 .glyph {
@@ -212,7 +212,7 @@
 
 .back:hover {
   color: var(--ink);
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
 }
 
 .subTitle {
@@ -348,8 +348,8 @@
 }
 
 .choiceOn .radio {
-  border-color: var(--clay);
-  box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 7px var(--clay);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 7px var(--accent);
 }
 
 .choiceText {
@@ -389,7 +389,7 @@
 
 .stepBtn:hover:not(:disabled) {
   color: var(--ink);
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
 }
 
 .stepBtn:disabled {

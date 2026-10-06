@@ -20,23 +20,28 @@
 /* ── colour ─────────────────────────────────────────────────────────────── */
 .body,
 .claw {
-  fill: var(--clay);
+  fill: var(--accent);
 }
 .limb {
   fill: none;
-  stroke: var(--clay);
+  stroke: var(--accent);
   stroke-width: 2.7;
   stroke-linecap: round;
 }
 .foot {
-  fill: var(--clay-ink);
+  fill: var(--accent-ink);
 }
+/* Face features read as cut-outs in a lit body, so they take the canvas colour. */
 .pupil,
 .mouth {
-  fill: var(--ink);
+  fill: var(--paper);
 }
 .glint {
-  fill: var(--paper-raised);
+  fill: var(--ink);
+}
+/* A lit figure on a dark canvas needs a little bloom to sit in it. */
+.body {
+  filter: drop-shadow(0 0 7px var(--accent-glow));
 }
 
 /* ── posture ────────────────────────────────────────────────────────────── */

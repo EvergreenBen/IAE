@@ -1,11 +1,13 @@
-// One architecture node on the map: a paper card. Positioned in world units by
-// its layer; glides when the layout changes.
+// One architecture node on the map: a disc with a caption under it. Positioned
+// in world units by its layer; glides when the layout changes. The disc holds
+// the glyph, label and file count; the summary and child chips sit outside it,
+// where a circle has room for them.
 import { memo } from 'react';
 import { motion } from 'motion/react';
 import type { ArchNode } from '@shared/model';
 import { ui } from '../state/store';
 import { KindGlyph, Mark } from './glyphs';
-import type { NodeBox } from './layout';
+import { CAPTION, type NodeBox } from './layout';
 import { mapLocal } from './mapStore';
 import s from './NodeCard.module.css';
 
@@ -58,7 +60,7 @@ function NodeCardImpl({ node, box, chips, files, selected, buildHue, enterDelay,
       }}
     >
       <div
-        className={s.card}
+        className={s.disc}
         data-node-id={node.id}
         data-status={status}
         data-selected={selected || undefined}
@@ -82,20 +84,25 @@ function NodeCardImpl({ node, box, chips, files, selected, buildHue, enterDelay,
         onMouseEnter={interactive ? () => mapLocal.setHovered(node.id) : undefined}
         onMouseLeave={interactive ? () => mapLocal.setHovered(null) : undefined}
       >
-        <div className={s.head}>
+        {box.container && <span className={s.outer} />}
+        <span className={s.inner} />
+        <div className={s.core}>
           <KindGlyph kind={node.kind} />
           <span className={s.label}>{node.label}</span>
-          {status === 'broken' && (
-            <span className={s.broken} title="Something here is broken">
-              <Mark name="alert" size={13} />
-            </span>
-          )}
           {files > 0 && (
             <span className={s.count} title={`${files} file${files === 1 ? '' : 's'}`}>
               {files}
             </span>
           )}
         </div>
+        {status === 'broken' && (
+          <span className={s.broken} title="Something here is broken">
+            <Mark name="alert" size={13} />
+          </span>
+        )}
+        {building && <span className={s.sheen} style={{ ['--hue' as string]: buildHue !== null ? `var(--agent-${buildHue % 6})` : 'var(--ink-3)' }} />}
+      </div>
+      <div className={s.caption}>
         {node.summary ? <div className={s.summary}>{node.summary}</div> : <div className={s.summaryEmpty}>{fallbackLine(node)}</div>}
         {box.container && childList.length > 0 && (
           <div className={s.chips}>
@@ -107,7 +114,6 @@ function NodeCardImpl({ node, box, chips, files, selected, buildHue, enterDelay,
             {childList.length > shown.length && <span className={s.more}>+{childList.length - shown.length}</span>}
           </div>
         )}
-        {building && <span className={s.sheen} style={{ ['--hue' as string]: buildHue !== null ? `var(--agent-${buildHue % 6})` : 'var(--ink-3)' }} />}
       </div>
     </motion.div>
   );
@@ -132,21 +138,17 @@ function fallbackLine(node: ArchNode): string {
   return node.status === 'planned' ? `Planned ${KIND_WORDS[node.kind].toLowerCase()}` : KIND_WORDS[node.kind];
 }
 
-/** Up to four chips that fit two short rows inside a container card. */
+/** The chips that fit one centred row under a container's disc. */
 function fitChips(list: string[]): string[] {
+  const rowW = CAPTION.w;
   const out: string[] = [];
-  const rowW = 236 - 32;
-  let row = 0;
   let x = 0;
   for (const c of list.slice(0, 4)) {
-    const w = Math.min(rowW, c.length * 5.9 + 14);
-    if (x + w > rowW - (out.length < list.length - 1 ? 26 : 0)) {
-      row++;
-      x = 0;
-      if (row > 1) break;
-    }
+    const w = Math.min(rowW, c.length * 5.9 + 16);
+    const room = rowW - (out.length < list.length - 1 ? 26 : 0);
+    if (out.length && x + 4 + w > room) break;
     out.push(c);
-    x += w + 4;
+    x += (out.length > 1 ? 4 : 0) + w;
   }
   return out;
 }

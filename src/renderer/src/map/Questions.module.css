@@ -15,11 +15,11 @@
   transform-origin: 0 0;
 }
 
-/* Leader: a dotted clay line from the node's edge to the card, with a small pin
-   at the node. Dotted and clay so it never reads as one more (grey, solid) edge. */
+/* Leader: a dotted accent line from the node's edge to the card, with a small pin
+   at the node. Dotted and accent-blue so it never reads as one more (grey, solid) edge. */
 .leader {
   position: absolute;
-  --dots: color-mix(in srgb, var(--clay) 70%, transparent);
+  --dots: color-mix(in srgb, var(--accent) 70%, transparent);
 }
 .leader::before {
   content: '';
@@ -27,7 +27,7 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--clay);
+  background: var(--accent);
 }
 .leader[data-side='right'],
 .leader[data-side='left'] {
@@ -95,8 +95,8 @@
   top: 14px;
   bottom: 14px;
   width: 2.5px;
-  border-radius: 2px;
-  background: var(--clay);
+  border-radius: var(--r-pill);
+  background: var(--accent);
 }
 /* Offsets come inline from the placement (questionPlace.ts); a slide glides. */
 .card {
@@ -135,14 +135,14 @@
   font-size: 11.5px;
   color: var(--ink-3);
   padding: 2px 6px;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-pill);
   transition:
     color var(--t-fast) var(--ease-out),
     background-color var(--t-fast) var(--ease-out);
 }
 .later:hover {
   color: var(--ink);
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
 }
 .close {
   display: grid;
@@ -157,7 +157,7 @@
 }
 .close:hover {
   color: var(--ink);
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
 }
 
 .prompt {
@@ -203,13 +203,13 @@
   border-color: var(--ink-3);
 }
 .option[data-rec] {
-  color: var(--clay-ink);
-  background: var(--clay-wash);
-  border-color: color-mix(in srgb, var(--clay) 35%, transparent);
+  color: var(--accent-ink);
+  background: var(--accent-wash);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
   font-weight: 520;
 }
 .option[data-rec]:hover {
-  border-color: var(--clay);
+  border-color: var(--accent);
 }
 
 /* Compact (a tight spot on a busy map): narrower, the why folded away, options inline. */
@@ -243,7 +243,7 @@
   text-overflow: ellipsis;
 }
 
-/* Other open questions: a small clay dot on the node's top-left corner. */
+/* Other open questions: a small accent dot on the node's top-left corner. */
 .dotAnchor {
   position: absolute;
   left: 0;
@@ -261,7 +261,7 @@
   height: 10px;
   padding: 0 3px;
   border-radius: var(--r-pill);
-  background: var(--clay);
+  background: var(--accent);
   box-shadow: 0 0 0 2px var(--paper);
   display: grid;
   place-items: center;

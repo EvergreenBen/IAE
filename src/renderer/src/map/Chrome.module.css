@@ -72,7 +72,7 @@
 .crumb:not([data-current]):hover,
 .project:not([data-current]):hover {
   color: var(--ink);
-  background: color-mix(in srgb, var(--paper-sunk) 70%, transparent);
+  background: color-mix(in srgb, var(--paper-lift) 70%, transparent);
 }
 .crumb[data-current],
 .project[data-current] {

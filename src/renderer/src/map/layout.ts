@@ -5,7 +5,22 @@ import type { ElkExtendedEdge, ElkNode } from 'elkjs/lib/elk-api';
 import { boundaryEdges, childrenOf, liftedEdges } from '@shared/map';
 import type { ArchMap, EdgeKind, FileEntry, NodeKind } from '@shared/model';
 import { inflate, labelPoint, roundedPath, simplify, union, type Pt, type Rect } from './geometry';
-import { CONTAINER, FRAME_PAD, LEAF, STUB_H, TILE, edgeStyle, scopeKey, type EdgeRoute, type FileChip, type NodeBox, type ScopeLayout, type Stub } from './layoutTypes';
+import {
+  CAPTION,
+  CONTAINER,
+  FRAME_PAD,
+  LEAF,
+  STUB_H,
+  TILE,
+  edgeStyle,
+  scopeKey,
+  withCaption,
+  type EdgeRoute,
+  type FileChip,
+  type NodeBox,
+  type ScopeLayout,
+  type Stub,
+} from './layoutTypes';
 import { labelTiers } from './edgeLabels';
 import { runElk } from './elk';
 import { FONT_MONO, textWidth } from './measure';
@@ -114,8 +129,10 @@ const ROOT_OPTIONS: Record<string, string> = {
   'elk.direction': 'RIGHT',
   'elk.edgeRouting': 'ORTHOGONAL',
   'elk.padding': '[top=0,left=0,bottom=0,right=0]',
-  'elk.spacing.nodeNode': '44',
-  'elk.layered.spacing.nodeNodeBetweenLayers': '84',
+  // Discs sit in a layer stacked vertically, so nodeNode has to clear the
+  // caption hanging below each one; between layers it clears its overhang.
+  'elk.spacing.nodeNode': `${CAPTION.h + 36}`,
+  'elk.layered.spacing.nodeNodeBetweenLayers': '96',
   'elk.spacing.edgeNode': '22',
   'elk.layered.spacing.edgeNodeBetweenLayers': '22',
   'elk.spacing.edgeEdge': '12',
@@ -236,7 +253,7 @@ async function compute(input: ScopeInput): Promise<ScopeLayout> {
       const s = wiredStubs.find((x) => x.key === c.id);
       if (s) stubs.push({ key: s.key, dir: s.dir, target: s.target, label: s.label, x: c.x ?? 0, y: c.y ?? 0, w: c.width ?? 0, h: c.height ?? STUB_H });
     }
-    content = union(Object.values(nodes));
+    content = union(Object.values(nodes).map(withCaption));
 
     // Line stubs up: incoming pills right-aligned, outgoing left-aligned.
     const ins = stubs.filter((s) => s.dir === 'in');

@@ -22,15 +22,19 @@
   stroke-width: 1.7;
   stroke-linecap: round;
 }
+/* Cut-outs in a lit body: the canvas colour, not the ink colour. */
 .eye {
-  fill: var(--ink);
+  fill: var(--paper);
 }
 .smile {
   fill: none;
-  stroke: var(--ink);
+  stroke: var(--paper);
   stroke-width: 1.1;
   stroke-linecap: round;
   opacity: 0;
+}
+.body {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, currentColor 45%, transparent));
 }
 
 .arm {

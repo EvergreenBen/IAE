@@ -48,7 +48,7 @@
   font-family: var(--font-ui);
   font-size: 15px;
   color: var(--ink);
-  caret-color: var(--clay);
+  caret-color: var(--accent);
 }
 .input::placeholder {
   color: var(--ink-3);
@@ -111,11 +111,11 @@
     color var(--t-fast) ease;
 }
 .mic:hover {
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
   color: var(--ink-2);
 }
 .mic[data-on] {
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
   color: var(--ink-2);
 }
 .mic[data-hearing] {
@@ -131,7 +131,7 @@
 .bar {
   width: 2.5px;
   min-height: 4px;
-  border-radius: 2px;
+  border-radius: var(--r-pill);
   background: currentColor;
   transition: height 90ms linear;
 }
@@ -144,7 +144,7 @@
   bottom: 0;
   height: 1.5px;
   overflow: hidden;
-  border-radius: 1px;
+  border-radius: var(--r-pill);
   background: var(--line);
 }
 .progressFill {

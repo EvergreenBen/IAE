@@ -134,7 +134,7 @@
   padding: 2px 6px;
   font-size: 12px;
   color: var(--ink-3);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-pill);
   transition:
     color var(--t-fast) var(--ease-out),
     background-color var(--t-fast) var(--ease-out);
@@ -185,7 +185,7 @@
   height: 28px;
   padding: 0 4px 0 11px;
   background: var(--paper-raised);
-  border: 1px solid color-mix(in srgb, var(--clay) 40%, var(--line));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
   border-radius: var(--r-pill);
   box-shadow: var(--shadow-2);
   white-space: nowrap;
@@ -209,14 +209,14 @@
   text-align: left;
   padding: 1px 4px;
   margin-right: 1px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   background: var(--paper-sunk);
 }
 button.code {
   cursor: pointer;
 }
 button.code:hover {
-  background: color-mix(in srgb, var(--paper-sunk) 70%, var(--line));
+  background: color-mix(in srgb, var(--paper-lift) 70%, var(--line));
 }
 /* Expanded: the whole command, wrapped. */
 .perm[data-open] {
@@ -254,15 +254,15 @@ button.code:hover {
 }
 .allow {
   color: var(--paper-raised);
-  background: var(--clay);
+  background: var(--accent);
 }
 .allow:hover {
-  background: var(--clay-ink);
+  background: var(--accent-ink);
 }
 .deny {
   color: var(--ink-3);
 }
 .deny:hover {
   color: var(--ink);
-  background: var(--paper-sunk);
+  background: var(--paper-lift);
 }

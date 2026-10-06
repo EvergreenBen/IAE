@@ -8,11 +8,11 @@
 // safe area. Within those, it prefers the right side, a short leader, and
 // keeping clear of edges (strongly) and labels. When the full card has no room
 // a compact one (narrower, options inline, `why` folded away) is tried; when
-// even that has none, place() returns null and the card's clay dot stands in
+// even that has none, place() returns null and the card's accent dot stands in
 // (clicking it asks again with `force`).
 import type { Anchor } from './anchors';
 import { overlaps, type Rect } from './geometry';
-import { QUESTION_CARD_W } from './layoutTypes';
+import { CAPTION, QUESTION_CARD_W, withCaption } from './layoutTypes';
 
 export const CARD_W = QUESTION_CARD_W;
 /** The compact card, for tight spots. */
@@ -80,12 +80,31 @@ export const cardW = (p: Pick<Placement, 'compact'>) => (p.compact ? COMPACT_W :
 /** Where the leader leaves the anchor (world). */
 export function anchorPoint(at: Anchor, side: Side, dy: number, dx?: number): { x: number; y: number } {
   const r = at.rect;
-  const px = r.x + (dx ?? r.w - (at.frame ? 40 : NOTCH));
-  if (side === 'right') return { x: r.x + r.w, y: r.y + dy };
-  if (side === 'left') return { x: r.x, y: r.y + dy };
-  if (side === 'below') return { x: px, y: at.frame ? r.y + 64 : r.y + r.h };
-  return { x: px, y: r.y };
+  if (at.frame) {
+    const px = r.x + (dx ?? r.w - 40);
+    if (side === 'right') return { x: r.x + r.w, y: r.y + dy };
+    if (side === 'left') return { x: r.x, y: r.y + dy };
+    if (side === 'below') return { x: px, y: r.y + 64 };
+    return { x: px, y: r.y };
+  }
+  // A node is a disc, so the leader leaves from the rim rather than from the
+  // corner of a bounding box — and below, from under the caption, so it never
+  // crosses the node's own words on its way to the card.
+  const cx = r.x + r.w / 2;
+  const cy = r.y + r.h / 2;
+  const rad = r.w / 2;
+  if (side === 'right' || side === 'left') {
+    const y = r.y + dy;
+    const half = halfChord(rad, y - cy);
+    return { x: side === 'right' ? cx + half : cx - half, y };
+  }
+  const x = dx === undefined ? cx : r.x + dx;
+  const half = halfChord(rad, x - cx);
+  return side === 'below' ? { x, y: cy + half + CAPTION.h } : { x, y: cy - half };
 }
+
+/** Half the chord of a circle of radius `rad` at distance `d` from its centre. */
+const halfChord = (rad: number, d: number) => Math.sqrt(Math.max(0, rad * rad - d * d));
 
 /** The card's rect in world px. Mirrors the inline styles in Questions.tsx. */
 export function cardRect(at: Anchor, p: Placement, ov: number, h: number): Rect {
@@ -212,7 +231,9 @@ function judge(input: PlaceInput, p: Placement, pref: number, h: number): { bad:
   if (p.dx !== undefined) cost += 300;
   if (p.compact) cost += 40_000;
   const gap = 6 * ov;
-  const own = at.frame ? [] : [at.rect];
+  // Its own node counts as an obstacle including the caption under the disc —
+  // the leader still points at the disc, but the card must clear the words.
+  const own = at.frame ? [] : [withCaption(at.rect)];
   for (const n of [...nodes, ...own]) {
     if (overlaps(card, n, gap)) bad += area(grow(card, gap), n) + 100;
     else cost += area(grow(card, 18 * ov), n) * 2; // a little breathing room

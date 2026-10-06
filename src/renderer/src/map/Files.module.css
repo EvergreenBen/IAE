@@ -11,7 +11,7 @@
   color: var(--ink-2);
   background: var(--paper-raised);
   border: 1px solid var(--line);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-pill);
   white-space: nowrap;
   transition:
     color var(--t-fast) var(--ease-out),
@@ -31,7 +31,7 @@
   font-size: 12px;
 }
 .chip[data-open] {
-  border-color: color-mix(in srgb, var(--clay) 45%, var(--line));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
 }
 .chipText {
   overflow: hidden;
@@ -61,7 +61,7 @@
   text-align: left;
   background: var(--paper-raised);
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-1);
   transition:
     box-shadow var(--t-med) var(--ease-out),
@@ -73,9 +73,9 @@
   box-shadow: var(--shadow-2);
 }
 .tile[data-open] {
-  border-color: color-mix(in srgb, var(--clay) 45%, var(--line));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
   box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--clay) 25%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent),
     var(--shadow-1);
 }
 .tileHead {

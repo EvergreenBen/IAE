@@ -35,7 +35,7 @@ export interface MapLocal {
   pinnedAgenda: string | null;
   /** Agenda items deferred with "later" (until the next new item). */
   later: string[];
-  /** Brief clay ring when the lead says "look at this". */
+  /** Brief accent ring when the lead says "look at this". */
   highlight: { id: string; seq: number } | null;
   /** Where ghosts were last drawn, so a committed node can grow from that spot. */
   ghostSpots: Record<string, { x: number; y: number; scope: string; at: number }>;

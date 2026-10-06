@@ -55,11 +55,11 @@ textarea {
 }
 
 ::selection {
-  background: var(--clay-wash);
+  background: var(--accent-wash);
 }
 
 :focus-visible {
-  outline: 2px solid var(--clay);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
