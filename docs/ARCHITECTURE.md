@@ -56,20 +56,28 @@ its constructor by `src/main/index.ts`.
 - One long-lived `query()` per open project with **streaming input** (an async
   queue of `SDKUserMessage`) and `includePartialMessages: true`. Text deltas
   become `lead/delta`. The final text becomes `lead/done`.
-- Lean by design. With these options the measured time to first token is about
-  1s and the context is about 3k tokens:
+- Lean by design (`lead-options.ts`). With these options the median time to
+  the first spoken word is about 1.1s (p90 about 2.6s):
   `tools: ['Read','Glob','Grep']`, `strictMcpConfig: true`,
   `settingSources: []`, custom `systemPrompt`, `mcpServers: { iae }`,
   `allowedTools: [all iae tools + Read/Glob/Grep]`, `model:
   settings.leadModel`, `effort: settings.leadEffort`, `cwd: project root`.
   Without `strictMcpConfig`, Claude Code pulls in every connector the user has,
-  which adds about 100k tokens and 3+ seconds per turn.
+  which adds about 100k tokens and 3+ seconds per turn. At effort `low`,
+  thinking is turned off: thinking happens before the first word, so it's
+  waiting time. A/B: p90 3.1s → 2.2s and −28% cost with the same answers.
+  `IAE_LEAD_THINKING=adaptive` turns it back on.
 - **Per-turn context**: each user message is wrapped in a compact `<context>`
   block. It holds what the user is looking at (scope, selection, open file),
-  the crew's status, open agenda items, events since the last turn (builds
-  finished, files created), and the map tree (`describeMap`), sent in full only
-  when it changed since the last turn. The utterance itself goes in an
-  `<user_said>` block.
+  the crew's status (and whether builder slots are full), open agenda items
+  (marking the card on screen), events since the last turn (builds finished,
+  files created), and one-time notes such as a rename. The full map tree
+  (`describeMap`) and recorded decisions go only on a session's first turn.
+  After that the lead sees just the changes others made (`mapdiff.ts`), which
+  keeps the history small and turns fast. The utterance itself goes in a
+  `<user_said>` block. When the renderer thinks the utterance answers the card
+  on screen, it carries that card's id only as a hint, and the lead decides
+  with `resolve_question`.
 - **Silence**: if the reply is empty or contains `<silence/>`, `lead/done` is
   emitted with empty text and nothing is spoken.
 - **Interrupt**: `interrupt()` calls `query.interrupt()` and drops queued TTS.
@@ -87,6 +95,14 @@ its constructor by `src/main/index.ts`.
   `permissionMode: 'acceptEdits'`, and anything else goes to `canUseTool` →
   `permission/request` → the user's ✓/✕ on the map. `full` uses
   `bypassPermissions`. `ask` uses `default`, with `canUseTool` for every write.
+- **Shell gate** (`gate.ts`): many people allow `Bash(*)` in
+  `~/.claude/settings.json`, which would mean Claude Code never asks. A
+  `PreToolUse` hook runs before those rules and sends every shell command that
+  isn't plainly read-only (or, in `ask` mode, every write) to the ✓/✕ on the
+  map. Read-only commands such as `ls`, `git status`/`diff`/`log` and the
+  project's own test, typecheck or build scripts pass through. Builders are
+  also told never to launch GUI apps, daemons, Docker, `sudo` or global
+  installs.
 - The message stream becomes the visualisation. Each `tool_use` block becomes an
   `agent/step`, `files/touched` (for Read/Edit/Write/MultiEdit/NotebookEdit
   paths) and an `agent/upsert` carrying `activity` ("Editing session.ts"),
@@ -96,8 +112,11 @@ its constructor by `src/main/index.ts`.
   so the map stays truthful) and `ask_architect` (raise a question through the
   lead's agenda; `blocking: true` waits for the answer).
 - On finish: the status becomes `done`/`failed` and `result` is the final
-  summary. The node's status becomes `built` (or `broken`), files are rescanned,
-  and the lead receives an event digest.
+  summary. The node's status becomes `built` (or `broken`), counted per node so
+  that parallel builders don't fight over it. Scouts and slash commands never
+  change node status. Files are rescanned, any new file the builder didn't
+  annotate gets a one-line note (batched, sketch model, `notes.ts`), and the
+  lead receives an event digest.
 - At most `settings.maxBuilders` run at once. Extra jobs wait in a queue (shown
   as `starting`).
 - Builder names come from a pool (Ada, Kit, Rho, Juno, Max, Bea, Lev, Ivy). The
@@ -131,11 +150,13 @@ answers.
 
 The pulse is a 5s tick. It nudges the lead when **all** of these hold: the user
 is idle (presence `idle`, ≥ 20s since the last utterance), the lead is idle and
-not speaking, there is no turn in flight, and something has changed or is
-pending (finished builds, open agenda, a new project with an empty map). The
-backoff is 45s → 90s → 180s and resets when the user speaks. Event digests
-(build finished or failed, a blocking question) skip the idle wait but still
-never talk over the user.
+done speaking, there is no turn in flight, and something **new** is pending. New
+means an agenda item the lead hasn't raised, builders at work (one nudge per
+build, so the lead uses that time for the next decision), events, or an empty
+new project. Each nudge says why. The backoff is 45s → 90s → 180s and resets
+when the user speaks. Event digests (build finished or failed, a blocking
+question) skip the idle wait but still never talk over the user. A blocking
+builder question is typically spoken 3–6s after it is raised.
 
 ## Persistence: `<project>/.iae/`
 
@@ -149,6 +170,16 @@ never talk over the user.
 | `state.json` | `{ leadSessionId, cartographedAt, createdAt }` |
 
 App-level: `<userData>/recent.json` and `<userData>/settings.json`.
+
+## Packaging
+
+`npm run package` produces `release/mac-arm64/IAE.app` with electron-builder
+(unsigned, for local use). Claude Code's native binary is unpacked from the
+asar (`asarUnpack` in `electron-builder.yml`), and `src/main/index.ts` points
+the SDK at it with `IAE_CLAUDE_PATH`. Only main-process runtime modules are
+`dependencies`. Everything the renderer uses is bundled by Vite and listed in
+`devDependencies`. Speech models aren't packaged. The packaged app downloads
+them on first use.
 
 ## Voice
 

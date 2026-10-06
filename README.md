@@ -33,10 +33,15 @@ Speech-to-text runs on-device (Whisper). It downloads on first use, or ahead of
 time with `npm run voice:setup`.
 
 `npm run web` runs the interface in a browser against a simulated engine, which
-is useful for design work.
+is useful for design work. `npm run package` builds a standalone `IAE.app`
+(unsigned) into `release/`.
+
+To try it on an existing codebase, open `examples/recipe-box`, a small demo
+monorepo. Then follow [`docs/DEMO.md`](docs/DEMO.md).
 
 ## Learn more
 
+- [`docs/DEMO.md`](docs/DEMO.md): a five-minute demo
 - [`CLAUDE.md`](CLAUDE.md): working on IAE
 - [`docs/PRD.md`](docs/PRD.md): the brief and how IAE adapts it
 - [`docs/DESIGN.md`](docs/DESIGN.md): the design language

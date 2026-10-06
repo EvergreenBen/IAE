@@ -55,6 +55,15 @@ npm run build        # production bundle into out/
 npm run typecheck    # both tsconfigs (node + web)
 npm test             # vitest (shared/ + engine pure logic)
 npm run voice:setup  # optional: pre-download the speech model for offline voice
+npm run package      # release/mac-arm64/IAE.app (unsigned, local use)
+```
+
+Engine scripts (real Claude, they cost tokens):
+
+```bash
+node scripts/smoke-engine.mjs            # end-to-end engine smoke test
+node scripts/converse.mjs <scenario>     # multi-turn conversation scenarios + scorecard
+                                         # climbing | stripe | idle | bargein | resume | sketch | rename
 ```
 
 Auth: IAE uses whatever Claude Code uses. If `claude` works in your terminal,
@@ -106,9 +115,9 @@ Per-project state lives in the user's project at `<project>/.iae/`
 - **Components select narrowly** from the store: `useIae((s) => s.map)`.
 - **Copy:** sentence case, short and human. No exclamation marks, no emoji, no
   "AI" word salad. Agents have names (Ada, Kit, …), not "Agent 3".
-- **Models:** lead `claude-opus-5-5` at `effort: 'low'` (fast, warm session),
-  builders `claude-opus-5-5`, sketcher `claude-haiku-4-5`. All configurable in
-  Settings.
+- **Models:** lead `claude-opus-5-5` at `effort: 'low'` with thinking off
+  (fast, warm session), builders `claude-opus-5-5`, sketcher `claude-haiku-4-5`.
+  All are configurable in Settings.
 - The lead session must stay lean: `strictMcpConfig: true`, `tools: []`, a
   custom system prompt, and only IAE's in-process MCP tools. With that it
   replies in about 1 second. Builders get the full Claude Code preset.
@@ -121,7 +130,11 @@ Per-project state lives in the user's project at `<project>/.iae/`
 - UI work: run `npm run web` and look at it (Chrome, or Playwright screenshots
   via `scripts/shoot.mjs`). The mock engine simulates agents, questions and
   replies, so every surface can be seen without Claude.
-- Engine work: `scripts/smoke-engine.mjs` drives a real lead turn against a
-  temp project (needs Claude Code auth).
+- Engine work: `scripts/smoke-engine.mjs` drives the real engine against a
+  temp project (needs Claude Code auth). For anything touching how Archie
+  talks, run `scripts/converse.mjs` scenarios before and after and compare
+  scorecards (see `docs/CONVERSATION.md` for the bar).
+- Real app: `npm run build`, then `scripts/shoot-electron.mjs` drives the built
+  app with Playwright and screenshots it.
 - Before calling a UI change done, look at a screenshot. Check it against
   `docs/DESIGN.md`.
