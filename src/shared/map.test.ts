@@ -118,3 +118,53 @@ describe('describeMap / slug', () => {
     expect(slug('???')).toBe('node');
   });
 });
+
+describe('parent cycles', () => {
+  it('refuses to reparent a node under its own descendant', async () => {
+    const { applyOps, emptyMap, descendantIds, childrenOf } = await import('./map');
+    let m = applyOps(emptyMap(), [
+      { op: 'upsertNode', node: { id: 'backend', parentId: null, label: 'Backend' } },
+      { op: 'upsertNode', node: { id: 'api', parentId: 'backend', label: 'API' } },
+    ]);
+    m = applyOps(m, [{ op: 'upsertNode', node: { id: 'backend', parentId: 'api' } }]);
+    expect(m.nodes.backend.parentId).toBeNull();
+    expect(m.nodes.api.parentId).toBe('backend');
+    expect(childrenOf(m, null).map((n) => n.id)).toEqual(['backend']);
+    expect(descendantIds(m, 'backend')).toEqual(['api']);
+  });
+
+  it('terminates on a cyclic map loaded from disk', async () => {
+    const { descendantIds } = await import('./map');
+    const cyclic = {
+      version: 1 as const,
+      nodes: {
+        a: { id: 'a', parentId: 'b', label: 'A', kind: 'module' as const, status: 'built' as const, createdAt: 0, updatedAt: 0 },
+        b: { id: 'b', parentId: 'a', label: 'B', kind: 'module' as const, status: 'built' as const, createdAt: 0, updatedAt: 0 },
+      },
+      edges: {},
+    };
+    expect(descendantIds(cyclic, 'a')).toEqual(['b']);
+  });
+});
+
+describe('projectFolderName', () => {
+  it('keeps readable names and strips unsafe characters', async () => {
+    const { projectFolderName } = await import('./map');
+    expect(projectFolderName('Recipe Box')).toBe('Recipe Box');
+    expect(projectFolderName('a/b:c')).toBe('a b c');
+    expect(projectFolderName('...hidden')).toBe('hidden');
+    expect(projectFolderName('   ')).toBe('Untitled');
+    expect(projectFolderName('Café ☕')).toBe('Café ☕');
+  });
+});
+
+describe('parent cycles within one batch', () => {
+  it('refuses a cycle formed by forward references', async () => {
+    const { applyOps, emptyMap, childrenOf } = await import('./map');
+    const m = applyOps(emptyMap(), [
+      { op: 'upsertNode', node: { id: 'api', parentId: 'backend', label: 'API' } },
+      { op: 'upsertNode', node: { id: 'backend', parentId: 'api', label: 'Backend' } },
+    ]);
+    expect(childrenOf(m, null).length).toBeGreaterThan(0);
+  });
+});

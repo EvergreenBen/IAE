@@ -51,6 +51,15 @@ function createWindow(): void {
   win.once('ready-to-show', () => win?.show());
   win.on('closed', () => {
     win = null;
+    // No window, no audience: stop the lead, builders and watchers rather
+    // than letting them run (and spend) invisibly until the Dock reopens Home.
+    void engine.closeProject().catch(() => {});
+  });
+  // A reload (dev) returns the renderer to Home, so the engine follows.
+  let loadedOnce = false;
+  win.webContents.on('did-finish-load', () => {
+    if (loadedOnce) void engine.closeProject().catch(() => {});
+    loadedOnce = true;
   });
 
   // External links open in the browser, never inside the app.
@@ -90,6 +99,12 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
-  void engine.shutdown();
+// Wait for the engine to flush .iae/ writes and stop sessions before exiting.
+let quitting = false;
+app.on('before-quit', (e) => {
+  if (quitting) return;
+  e.preventDefault();
+  quitting = true;
+  const done = () => app.quit();
+  void Promise.race([engine.shutdown(), new Promise((r) => setTimeout(r, 4000))]).then(done, done);
 });

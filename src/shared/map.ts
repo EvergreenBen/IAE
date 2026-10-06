@@ -34,7 +34,10 @@ export function applyOps(map: ArchMap, ops: MapOp[], now = Date.now()): ArchMap 
         const prev = nodes[o.node.id];
         const defaults: ArchNode = { id: o.node.id, parentId: null, label: o.node.id, kind: 'module', status: 'planned', createdAt: now, updatedAt: now };
         const merged: ArchNode = { ...defaults, ...prev, ...stripUndefined(o.node), updatedAt: now };
-        if (merged.parentId === merged.id) merged.parentId = null;
+        // Refuse parent cycles (self, or under one of its own descendants): keep the old parent.
+        if (merged.parentId && (merged.parentId === merged.id || descendantIds({ ...map, nodes, edges }, merged.id).includes(merged.parentId))) {
+          merged.parentId = prev && prev.parentId !== merged.id ? prev.parentId : null;
+        }
         nodes[merged.id] = merged;
         break;
       }
@@ -98,9 +101,13 @@ export function descendantIds(map: ArchMap, id: string): string[] {
     list.push(n.id);
     byParent.set(n.parentId, list);
   }
+  // `seen` guards against parent cycles in hand-edited or legacy map files.
+  const seen = new Set<string>([id]);
   while (stack.length) {
     const cur = stack.pop()!;
     for (const c of byParent.get(cur) ?? []) {
+      if (seen.has(c)) continue;
+      seen.add(c);
       out.push(c);
       stack.push(c);
     }
@@ -271,4 +278,18 @@ export function describeMap(map: ArchMap, files?: FileEntry[], maxFilesPerNode =
     for (const e of edges) lines.push(`- ${e.from} → ${e.to} (${e.kind}${e.label ? `: ${e.label}` : ''})`);
   }
   return lines.length ? lines.join('\n') : '(empty — nothing drawn yet)';
+}
+
+/**
+ * The folder name a new project gets on disk. Shared by the engine (which
+ * creates it) and the UI (which previews it) so they always agree.
+ */
+export function projectFolderName(name: string): string {
+  const cleaned = name
+    .replace(/[/\\:*?"<>|\u0000-\u001f]/g, ' ')
+    .replace(/^\.+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+  return cleaned || 'Untitled';
 }
