@@ -1,0 +1,110 @@
+/* A builder. `color` carries the agent hue; everything tints from it. */
+
+.mark {
+  display: block;
+  overflow: visible;
+  flex: none;
+  transition: opacity var(--t-med) ease;
+}
+.mark g,
+.mark path,
+.mark ellipse {
+  transform-box: view-box;
+}
+
+.body,
+.claw {
+  fill: currentColor;
+}
+.limb {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+.eye {
+  fill: var(--ink);
+}
+.smile {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  opacity: 0;
+}
+
+.arm {
+  transition: transform var(--t-slow) var(--ease-out);
+}
+.armL {
+  transform-origin: 5px 11px;
+}
+.armR {
+  transform-origin: 15px 11px;
+}
+.eyes {
+  transition: transform var(--t-med) var(--ease-out);
+}
+
+/* working: the right claw ticks twice, then rests a long while */
+.mark[data-state='working'] .armR {
+  animation: tick 6.4s var(--ease-in-out) infinite;
+}
+@keyframes tick {
+  0%,
+  78%,
+  100% {
+    transform: rotate(0deg);
+  }
+  83% {
+    transform: rotate(18deg);
+  }
+  88% {
+    transform: rotate(2deg);
+  }
+  93% {
+    transform: rotate(14deg);
+  }
+}
+
+.mark[data-state='thinking'] .eyes {
+  transform: translate(-0.6px, -0.9px);
+}
+
+/* waiting: one claw up, like a raised hand */
+.mark[data-state='waiting'] .armL {
+  transform: translate(0.4px, -2px) rotate(22deg);
+}
+
+/* done: eyes close into a contented smile */
+.mark[data-state='done'] .eyes {
+  opacity: 0;
+}
+.mark[data-state='done'] .smile {
+  opacity: 1;
+}
+
+/* failed: eyes down, claws lowered */
+.mark[data-state='failed'] .eyes {
+  transform: translateY(1px) scaleY(0.7);
+  transform-origin: 10px 12px;
+}
+.mark[data-state='failed'] .armL {
+  transform: rotate(-40deg);
+}
+.mark[data-state='failed'] .armR {
+  transform: rotate(40deg);
+}
+
+.mark[data-state='starting'] {
+  opacity: 0.55;
+}
+.mark[data-state='stopped'] {
+  opacity: 0.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark[data-state='working'] .armR {
+    animation: none;
+  }
+}

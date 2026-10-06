@@ -1,0 +1,162 @@
+.wrap {
+  position: relative;
+  pointer-events: auto;
+  width: min(640px, 60vw);
+  min-width: 380px;
+}
+
+.pill {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 52px;
+  padding: 0 var(--s-2) 0 52px;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-2);
+  transition: border-color var(--t-med) ease;
+}
+.pill[data-focused] {
+  border-color: var(--line-strong);
+}
+
+/* Archie sits on the left end, feet on the pill's inner floor. */
+.perch {
+  position: absolute;
+  left: 7px;
+  bottom: 5px;
+  width: 40px;
+  height: 40px;
+  pointer-events: none;
+}
+
+.field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+.input {
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--s-2) 0 var(--s-1);
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  color: var(--ink);
+  caret-color: var(--clay);
+}
+.input::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
+}
+.input[data-slash] {
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+.input:focus-visible {
+  outline: none;
+}
+
+/* What the user is saying, live, in ink-2. Scrolled to the newest words. */
+.interim {
+  position: absolute;
+  inset: 0 var(--s-2) 0 var(--s-1);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 15px;
+  color: var(--ink-2);
+  pointer-events: none;
+  mask-image: linear-gradient(to right, transparent 0, black 18px);
+}
+.interim span {
+  flex: none;
+  padding-left: 1px;
+}
+
+.hint {
+  flex: none;
+  margin-right: var(--s-2);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity var(--t-med) ease;
+}
+.hint[data-tone='faint'] {
+  color: var(--ink-4);
+}
+.hint[data-tone='quiet'] {
+  color: var(--ink-3);
+}
+.hint[data-tone='note'] {
+  color: var(--ink-2);
+}
+
+.mic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-pill);
+  color: var(--ink-3);
+  transition:
+    background var(--t-fast) ease,
+    color var(--t-fast) ease;
+}
+.mic:hover {
+  background: var(--paper-sunk);
+  color: var(--ink-2);
+}
+.mic[data-on] {
+  background: var(--paper-sunk);
+  color: var(--ink-2);
+}
+.mic[data-hearing] {
+  color: var(--ink);
+}
+
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 2.5px;
+  height: 16px;
+}
+.bar {
+  width: 2.5px;
+  min-height: 4px;
+  border-radius: 2px;
+  background: currentColor;
+  transition: height 90ms linear;
+}
+
+/* Model download / load: a thin line along the pill's floor, nothing more. */
+.progress {
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  bottom: 0;
+  height: 1.5px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--line);
+}
+.progressFill {
+  height: 100%;
+  background: var(--ink-3);
+  transform-origin: left center;
+  transition: transform var(--t-med) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar,
+  .progressFill {
+    transition: none;
+  }
+}

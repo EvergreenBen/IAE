@@ -1,0 +1,150 @@
+/* Archie. Every moving part is a <g> with its own transform so expressions
+   compose (lean × squash × gaze × blink) without fighting. */
+
+.archie {
+  display: block;
+  overflow: visible;
+  flex: none;
+  --ex: 0;
+  --ey: 0;
+  --lv: 0;
+}
+
+.archie g,
+.archie ellipse,
+.archie path,
+.archie rect {
+  transform-box: view-box;
+}
+
+/* ── colour ─────────────────────────────────────────────────────────────── */
+.body,
+.claw {
+  fill: var(--clay);
+}
+.limb {
+  fill: none;
+  stroke: var(--clay);
+  stroke-width: 2.7;
+  stroke-linecap: round;
+}
+.foot {
+  fill: var(--clay-ink);
+}
+.pupil,
+.mouth {
+  fill: var(--ink);
+}
+.glint {
+  fill: var(--paper-raised);
+}
+
+/* ── posture ────────────────────────────────────────────────────────────── */
+.lean {
+  transform-origin: 20px 34px;
+  transition: transform var(--t-slow) var(--ease-out);
+}
+.squash {
+  transform-origin: 20px 34px;
+  transform: scale(calc(1 + var(--lv) * 0.05), calc(1 - var(--lv) * 0.08));
+  transition: transform 90ms linear;
+}
+.arm {
+  transition: transform var(--t-slow) var(--ease-out);
+}
+.armL {
+  transform-origin: 10px 22px;
+}
+.armR {
+  transform-origin: 30px 22px;
+}
+
+/* ── face ───────────────────────────────────────────────────────────────── */
+.gaze {
+  transform: translate(calc(var(--ex) * 1px), calc(var(--ey) * 1px));
+  transition: transform 380ms var(--ease-out);
+}
+.eyes {
+  transform-origin: 20px 23px;
+  transition: transform var(--t-med) var(--ease-out);
+}
+.eye {
+  transform-origin: 20px 23px;
+  transition: transform 70ms ease-in;
+}
+.archie[data-blink] .eye {
+  transform: scaleY(0.12);
+}
+.mouth {
+  opacity: 0;
+  transition: opacity var(--t-fast) ease;
+}
+
+/* ── states ─────────────────────────────────────────────────────────────── */
+
+/* listening: lean toward the input, eyes a little wider */
+.archie[data-state='listening'] .lean {
+  transform: rotate(5deg);
+}
+.archie[data-state='listening'] .eyes {
+  transform: scale(1.1, 1.14);
+}
+
+/* thinking: one claw taps, slowly */
+.archie[data-state='thinking'] .armR {
+  animation: tap 2.2s var(--ease-in-out) infinite;
+}
+@keyframes tap {
+  0%,
+  46%,
+  100% {
+    transform: rotate(0deg);
+  }
+  58% {
+    transform: rotate(16deg);
+  }
+  70% {
+    transform: rotate(3deg);
+  }
+  80% {
+    transform: rotate(12deg);
+  }
+}
+
+/* speaking */
+.archie[data-state='speaking'] .mouth {
+  opacity: 1;
+}
+
+/* question: one claw up, like a raised hand */
+.archie[data-state='question'] .armL {
+  transform: translate(0.6px, -3.2px) rotate(24deg);
+}
+.archie[data-state='question'] .eyes {
+  transform: scale(1.04, 1.06);
+}
+
+/* away: eyes closed, claws down */
+.archie[data-state='away'] .eye {
+  transform: scaleY(0.12);
+}
+.archie[data-state='away'] .armL {
+  transform: rotate(-38deg);
+}
+.archie[data-state='away'] .armR {
+  transform: rotate(38deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .archie[data-state='thinking'] .armR {
+    animation: none;
+    transform: rotate(10deg);
+  }
+  .lean,
+  .squash,
+  .arm,
+  .gaze,
+  .eyes {
+    transition: none;
+  }
+}

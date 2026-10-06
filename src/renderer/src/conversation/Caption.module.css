@@ -1,0 +1,53 @@
+/* At most two lines. Longer replies keep their newest words in view; the
+   older line slides up under a soft fade. */
+.caption {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  max-width: 640px;
+  max-height: calc(2 * 1.42em);
+  margin: 0 auto;
+  padding: 0 var(--s-2);
+  overflow: hidden;
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  line-height: 1.42;
+  font-optical-sizing: auto;
+  color: var(--ink);
+  text-align: center;
+  text-wrap: balance;
+  cursor: pointer;
+  /* A paper halo keeps the words legible over edges and nodes. */
+  text-shadow:
+    0 0 2px var(--paper),
+    0 0 10px var(--paper),
+    0 0 18px var(--paper);
+}
+.caption[data-overflow] {
+  mask-image: linear-gradient(to bottom, transparent 0, black 0.9em);
+}
+.caption:focus-visible {
+  outline-offset: 4px;
+  border-radius: var(--r-sm);
+}
+
+.text {
+  display: block;
+}
+
+.word {
+  animation: wordIn 180ms var(--ease-out) both;
+}
+
+@keyframes wordIn {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .word {
+    animation: none;
+  }
+}
