@@ -49,14 +49,15 @@ Accessibility → Spoken Content → System voice → Manage voices → English 
    It often spots real gaps, for example *"Nothing enqueues jobs today. Should
    the API queue thumbnail jobs after uploads?"*
 4. **Find your `.env` through the map**: double-click **API**, then **Config**,
-   then `.env`. Values are masked, each key carries its own note, and you edit
-   in place. ⌘S saves.
+   then `.env`. Values are masked, sections and per-key notes come from the
+   file's comments, and you edit in place. ⌘S saves and keeps the formatting.
 5. Press ⌘M (meaning mode) and the file names turn into what each file is for.
 
 ## 3. Still Claude Code
 
-- Type `/` in the intent line to see your Claude Code commands and skills.
-  `/review` runs as a builder on the map.
+- Type `/` in the intent line to see your Claude Code commands and skills,
+  for example `/code-review` or `/security-review`. A command runs as a
+  builder on the map.
 - Builders load your CLAUDE.md, skills, plugins, hooks and MCP servers.
 - ⌘K → Settings sets autonomy: *ask* (approve every change), *edits*
   (default: edits flow, commands ask, approved with ✓ on the map) or *full*.

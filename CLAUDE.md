@@ -37,7 +37,7 @@ Read these before making product or design decisions:
    somewhere.
 6. **Claude Code underneath, intact.** Builders are real Claude Code sessions
    with the user's skills, plugins, CLAUDE.md, MCP servers and permissions.
-   Slash commands work from the intent line (`/review`, `/init`, …).
+   Slash commands and skills work from the intent line (type `/`).
 
 ## Stack
 
