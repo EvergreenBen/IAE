@@ -1,9 +1,10 @@
-import { app, BrowserWindow, session, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, dialog, session, shell, systemPreferences } from 'electron';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { adoptLoginShellPath } from './env';
 import { registerIpc, windowEmitter } from './ipc';
-import { Engine } from './engine/engine';
+import { Engine, type EngineHost } from './engine/engine';
 
 const here = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url));
 
@@ -12,7 +13,18 @@ app.setName('IAE');
 
 let win: BrowserWindow | null = null;
 const emit = windowEmitter(() => win);
-const engine = new Engine(emit);
+
+const host: EngineHost = {
+  async pickFolder() {
+    const options: Electron.OpenDialogOptions = { properties: ['openDirectory', 'createDirectory'], buttonLabel: 'Open' };
+    const r = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+    return r.canceled || !r.filePaths[0] ? null : r.filePaths[0];
+  },
+  userDataDir: () => app.getPath('userData'),
+  homeDir: () => homedir(),
+  revealFile: (absPath) => shell.showItemInFolder(absPath),
+};
+const engine = new Engine(emit, host);
 
 function createWindow(): void {
   win = new BrowserWindow({

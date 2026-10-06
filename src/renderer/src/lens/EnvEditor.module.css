@@ -1,0 +1,425 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ── toolbar ─────────────────────────────────────────────────────────────── */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  width: 100%;
+  max-width: 760px;
+  height: 48px;
+  flex: none;
+  margin: 0 auto;
+  padding: 0 var(--s-6);
+  font-size: var(--text-sm);
+  color: var(--ink-3);
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+}
+
+.changedCount {
+  color: var(--clay-ink);
+}
+
+.undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+}
+
+.undo code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.link {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  transition: color var(--t-fast) var(--ease-out);
+}
+
+.link:hover {
+  color: var(--ink);
+}
+
+.undo .link {
+  color: var(--clay-ink);
+  font-weight: 500;
+}
+
+/* ── list ────────────────────────────────────────────────────────────────── */
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Rows fade under the toolbar and footer instead of being cut. */
+  mask-image: linear-gradient(to bottom, transparent 0, black 14px, black calc(100% - 20px), transparent 100%);
+}
+
+.raw {
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--line);
+}
+
+.list {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--s-3) var(--s-6) var(--s-7);
+}
+
+.empty {
+  margin: var(--s-5) 0 var(--s-3);
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  color: var(--ink-3);
+}
+
+.section + .section {
+  margin-top: var(--s-5);
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 0 var(--s-2);
+  font-size: var(--text-sm);
+  font-weight: 560;
+  color: var(--ink-2);
+}
+
+.headingMore {
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+/* Height animates on add/remove, so the wrapper clips; the gutter padding
+   keeps the "changed" mark (which sits left of the row) inside the clip. */
+.rowWrap,
+.otherWrap {
+  overflow: hidden;
+  margin-left: -20px;
+  padding-left: 20px;
+}
+
+.rowWrap + .rowWrap .row,
+.otherWrap + .rowWrap .row,
+.rowWrap + .otherWrap .other {
+  border-top: 1px solid var(--line);
+}
+
+.heading + .rowWrap .row {
+  border-top: 1px solid var(--line);
+}
+
+/* ── a variable ──────────────────────────────────────────────────────────── */
+
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(180px, 34%) minmax(0, 1fr) 88px;
+  grid-template-areas:
+    'key value actions'
+    'note note .';
+  align-items: start;
+  column-gap: var(--s-4);
+  padding: 11px 0 9px;
+}
+
+.mark {
+  position: absolute;
+  left: -16px;
+  top: 23px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--clay);
+  opacity: 0;
+  transform: scale(0.5);
+  transition:
+    opacity var(--t-med) var(--ease-out),
+    transform var(--t-med) var(--ease-out);
+}
+
+.changed .mark {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.fresh {
+  animation: born 1.4s var(--ease-out);
+}
+
+@keyframes born {
+  from {
+    background: var(--clay-wash);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+.keyCol {
+  grid-area: key;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.key,
+.note {
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  border-radius: var(--r-sm);
+  margin-left: -6px;
+  padding: 0 6px;
+  transition: background var(--t-fast) var(--ease-out);
+}
+
+.key {
+  height: 30px;
+  font-family: var(--font-mono);
+  font-size: 12.75px;
+  font-weight: 560;
+  color: var(--ink);
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+}
+
+.note {
+  grid-area: note;
+  width: calc(100% + 6px);
+  height: 22px;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  text-overflow: ellipsis;
+}
+
+.key:hover,
+.note:hover {
+  background: color-mix(in srgb, var(--paper-sunk) 60%, transparent);
+}
+
+.key:focus,
+.note:focus {
+  background: var(--paper-sunk);
+}
+
+.note::placeholder {
+  color: var(--ink-4);
+}
+
+.dup {
+  position: absolute;
+  right: 0;
+  top: 7px;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--warn-wash);
+  color: var(--warn);
+  font-size: 10.5px;
+  font-weight: 560;
+}
+
+.valueCol {
+  grid-area: value;
+  min-width: 0;
+}
+
+.well {
+  display: block;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--paper-sunk);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  text-align: left;
+  outline: none;
+  transition:
+    border-color var(--t-fast) var(--ease-out),
+    background var(--t-fast) var(--ease-out);
+}
+
+.value:focus {
+  background: var(--paper);
+  border-color: var(--line-strong);
+}
+
+.value::placeholder {
+  color: var(--ink-4);
+  font-family: var(--font-ui);
+  font-style: italic;
+}
+
+.multi {
+  height: auto;
+  padding: 6px 10px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.masked {
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  cursor: text;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.masked:hover {
+  color: var(--ink-3);
+  border-color: var(--line);
+}
+
+.actions {
+  grid-area: actions;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  height: 30px;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  color: var(--ink-4);
+  transition:
+    color var(--t-fast) var(--ease-out),
+    background var(--t-fast) var(--ease-out),
+    opacity var(--t-fast) var(--ease-out);
+}
+
+.icon:hover {
+  color: var(--ink);
+  background: var(--paper-sunk);
+}
+
+.iconOn {
+  color: var(--ink-2);
+}
+
+/* Secondary actions stay out of the way until you reach for the row. */
+.onHover {
+  opacity: 0;
+}
+
+.row:hover .onHover,
+.row:focus-within .onHover {
+  opacity: 1;
+}
+
+.remove:hover {
+  color: var(--bad);
+}
+
+.other {
+  padding: 10px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── add ─────────────────────────────────────────────────────────────────── */
+
+.addBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+  height: 34px;
+  padding: 0 14px 0 11px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-pill);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+  transition:
+    color var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out),
+    background var(--t-fast) var(--ease-out);
+}
+
+.addBtn:hover {
+  color: var(--ink);
+  border-color: var(--ink-4);
+  background: var(--paper);
+}
+
+.adding {
+  margin-top: var(--s-3);
+  border-top: 1px solid var(--line);
+  padding-top: var(--s-4);
+}
+
+.adding .mark {
+  top: 28px;
+}
+
+.keyNew {
+  background: var(--paper-sunk);
+}
+
+.keyNew::placeholder {
+  color: var(--ink-4);
+}
+
+.addHint {
+  grid-area: note;
+  padding: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.addConfirm {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--r-pill);
+  background: var(--clay);
+  color: var(--paper-raised);
+  font-size: var(--text-sm);
+  font-weight: 560;
+  transition: opacity var(--t-fast) var(--ease-out);
+}
+
+.addConfirm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.adding .actions {
+  gap: 4px;
+}
+
+.adding {
+  grid-template-columns: minmax(180px, 34%) minmax(0, 1fr) auto;
+}

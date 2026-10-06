@@ -1,0 +1,39 @@
+.root {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--r-pill);
+  background: var(--paper-sunk);
+  gap: 2px;
+}
+
+.opt {
+  position: relative;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: var(--r-pill);
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  transition: color var(--t-fast) var(--ease-out);
+}
+
+.opt:hover {
+  color: var(--ink-2);
+}
+
+.on,
+.on:hover {
+  color: var(--ink);
+}
+
+.thumb {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-pill);
+  background: var(--paper-raised);
+  box-shadow: var(--shadow-1), 0 0 0 1px var(--line);
+}
+
+.label {
+  position: relative;
+}

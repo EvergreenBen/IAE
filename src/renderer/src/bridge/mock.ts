@@ -5,6 +5,7 @@
 import type { HomeInfo, IaeBridge, SayMeta } from '@shared/bridge';
 import type { EngineEvent } from '@shared/events';
 import { applyOps, assignFiles, emptyMap, slug } from '@shared/map';
+import { SAMPLE_EXPLAIN, SAMPLE_FILE_TEXT } from './mockFiles';
 import {
   DEFAULT_SETTINGS,
   type AgendaItem,
@@ -116,6 +117,10 @@ const NOTES: Record<string, string> = {
   'apps/api/src/auth/middleware.ts': 'Rejects requests without a valid session cookie.',
   'apps/api/db/schema.ts': 'Drizzle table definitions for users, recipes, sessions.',
   'apps/web/lib/query.ts': 'TanStack Query client and fetch helpers.',
+  'apps/api/src/index.ts': 'Starts the server and mounts every route.',
+  'apps/api/src/recipes/scale.ts': 'Scales servings and rounds to kitchen fractions.',
+  'apps/web/components/RecipeCard.tsx': 'The recipe tile used in every grid.',
+  'apps/api/db/migrations/0002_sessions.sql': 'Adds the sessions table and its expiry index.',
 };
 
 function sampleFiles(map: ArchMap): FileEntry[] {
@@ -125,30 +130,10 @@ function sampleFiles(map: ArchMap): FileEntry[] {
   );
 }
 
-const FILE_TEXT: Record<string, string> = {
-  'apps/api/.env': `# Recipe Box API — local environment
-DATABASE_URL=postgres://recipe:recipe@localhost:5432/recipebox
-GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=••••••••
-S3_BUCKET=recipe-box-images
-SESSION_TTL_DAYS=30
-`,
-  'apps/api/src/auth/session.ts': `import { db } from '../../db';
-import { sessions } from '../../db/schema';
-import { config } from '../config';
+// Sample contents (and the explanations below) live in ./mockFiles.ts.
+const FILE_TEXT: Record<string, string> = { ...SAMPLE_FILE_TEXT };
 
-export async function createSession(userId: string) {
-  const expiresAt = new Date(Date.now() + config.sessionTtlDays * 864e5);
-  const [row] = await db.insert(sessions).values({ userId, expiresAt }).returning();
-  return row;
-}
-
-export async function rotateSession(id: string) {
-  // Sliding expiry: every authenticated request pushes the window forward.
-  await db.update(sessions).set({ expiresAt: new Date(Date.now() + config.sessionTtlDays * 864e5) });
-}
-`,
-};
+const BINARY = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|woff2?|ttf|mp4|mov|sqlite|db)$/i;
 
 // ── The mock bridge ──────────────────────────────────────────────────────────
 
@@ -360,19 +345,23 @@ export function createMockBridge(): IaeBridge {
       emit({ type: 'map/ops', ops, source: 'user' });
     },
     async readFile(path) {
+      if (BINARY.test(path)) return { path, content: '', unreadable: true, size: 48_213, language: 'binary' };
       const content =
         FILE_TEXT[path] ??
         `// ${path}\n// (mock content — run the desktop app to see real files)\n\nexport function example() {\n  return 'Recipe Box';\n}\n`;
       const ext = path.split('.').pop() ?? '';
-      const language = path.endsWith('.env') ? 'env' : ({ ts: 'typescript', tsx: 'typescript', sql: 'sql', md: 'markdown', json: 'json' } as Record<string, string>)[ext] ?? 'text';
+      const language = path.endsWith('.env')
+        ? 'env'
+        : ({ ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', sql: 'sql', md: 'markdown', json: 'json', py: 'python', css: 'css', html: 'html' } as Record<string, string>)[ext] ??
+          'text';
       return { path, content, size: content.length, language };
     },
     async writeFile(path, content) {
       FILE_TEXT[path] = content;
     },
     async explainFile(path) {
-      await sleep(400);
-      return NOTES[path] ?? `Part of ${path.split('/').slice(0, -1).join('/')}.`;
+      await sleep(SAMPLE_EXPLAIN[path] ? 1100 : 400);
+      return SAMPLE_EXPLAIN[path] ?? NOTES[path] ?? `Part of ${path.split('/').slice(0, -1).join('/')}.`;
     },
     async revealFile() {},
     async stopAgent(agentId) {
