@@ -102,16 +102,16 @@ export function Row({ entry: e, masked, revealed, changed, duplicate, fresh, aut
 
       <div className={s.actions}>
         {!e.note && !noting && (
-          <button type="button" className={`${s.icon} ${s.onHover}`} onClick={() => setNoting(true)} title="Add a note">
+          <button type="button" className={`${s.icon} ${s.onHover}`} onClick={() => setNoting(true)} title="Add a note" aria-label={`Add a note to ${e.key}`}>
             <NoteIcon size={14} />
           </button>
         )}
         {!empty && (
-          <button type="button" className={`${s.icon} ${revealed ? s.iconOn : ''}`} onClick={onToggle} title={revealed ? 'Hide value' : 'Show value'} aria-pressed={revealed}>
+          <button type="button" className={`${s.icon} ${revealed ? s.iconOn : ''}`} onClick={onToggle} title={revealed ? 'Hide value' : 'Show value'} aria-label={revealed ? `Hide ${e.key}` : `Show ${e.key}`} aria-pressed={revealed}>
             {revealed ? <EyeOffIcon size={15} /> : <EyeIcon size={15} />}
           </button>
         )}
-        <button type="button" className={`${s.icon} ${s.onHover} ${s.remove}`} onClick={onRemove} title={`Remove ${e.key}`}>
+        <button type="button" className={`${s.icon} ${s.onHover} ${s.remove}`} onClick={onRemove} title={`Remove ${e.key}`} aria-label={`Remove ${e.key}`}>
           <CloseIcon size={13} />
         </button>
       </div>
@@ -194,7 +194,7 @@ export function AddRow({ onAdd, existing }: { onAdd: (key: string, value: string
         <button type="button" className={s.addConfirm} onClick={submit} disabled={!key}>
           Add
         </button>
-        <button type="button" className={s.icon} onClick={close} title="Cancel">
+        <button type="button" className={s.icon} onClick={close} title="Cancel" aria-label="Cancel">
           <CloseIcon size={13} />
         </button>
       </div>

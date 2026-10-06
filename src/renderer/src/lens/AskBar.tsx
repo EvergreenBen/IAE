@@ -1,6 +1,7 @@
 // The lens footer: ask the lead to change this file without leaving it. The
 // request carries the path as context; the lead's reply streams in above the
 // field so the conversation isn't hidden behind the sheet.
+import { DEFAULT_SETTINGS } from '@shared/model';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { bridge } from '../bridge';
@@ -13,7 +14,7 @@ const WAIT_FOR_REPLY = 12000;
 const REPLY_LINGER = 9000;
 
 export function AskBar({ path, children }: { path: string; children?: ReactNode }) {
-  const leadName = useIae((st) => st.settings.leadName || 'Archie');
+  const leadName = useIae((st) => st.settings.leadName || DEFAULT_SETTINGS.leadName);
   const lead = useIae((st) => st.lead);
   const [text, setText] = useState('');
   const [sent, setSent] = useState<{ turnId: string | null } | null>(null);

@@ -22,6 +22,8 @@ export class SpeechToText {
   device: SttDevice | null = null;
   /** 0..1 while downloading/loading. */
   onProgress: (p: number) => void = () => {};
+  /** The worker died. Everything waiting on it has been rejected; the next load() starts afresh. */
+  onCrash: (err: Error) => void = () => {};
 
   get isReady(): boolean {
     return this.device !== null;
@@ -70,10 +72,15 @@ export class SpeechToText {
           }
         }
       };
-      worker.onerror = (e) => {
-        this.ready = null;
-        reject(new Error(e.message || 'Speech worker failed'));
+      const crashed = (err: Error) => {
+        reject(err);
+        this.crash(worker, err);
       };
+      worker.onerror = (e) => {
+        e.preventDefault();
+        crashed(new Error(e.message || 'Speech worker failed'));
+      };
+      worker.onmessageerror = () => crashed(new Error('Speech worker sent something unreadable'));
     });
     const req: SttRequest = { type: 'load', model, localModelPath: localModelBase(model), ortBase: localRuntimeBase(), device };
     worker.postMessage(req);
@@ -91,6 +98,24 @@ export class SpeechToText {
       const req: SttRequest = { type: 'transcribe', id, audio };
       this.worker!.postMessage(req, [audio.buffer]);
     });
+  }
+
+  /**
+   * A crashed worker answers nothing: settle everything that was waiting (so
+   * the mic never sticks on "transcribing") and forget the model, so the next
+   * use loads a fresh worker instead of talking to a dead one.
+   */
+  private crash(worker: Worker, err: Error): void {
+    if (this.worker !== worker) return;
+    console.warn('[voice] speech worker crashed:', err.message);
+    worker.terminate();
+    this.worker = null;
+    this.ready = null;
+    this.device = null;
+    for (const p of this.pending.values()) p.reject(err);
+    this.pending.clear();
+    this.inFlight = 0;
+    this.onCrash(err);
   }
 
   dispose(): void {

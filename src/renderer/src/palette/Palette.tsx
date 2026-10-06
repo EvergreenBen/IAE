@@ -1,12 +1,14 @@
 // ⌘K: go anywhere on the map, open any file, flip a mode, run a Claude Code
 // command, or change settings. A small popover near the top third; fuzzy
 // search; ↑↓ ↵ Esc. Also hosts the notice toasts for the project screen.
-import { slug } from '@shared/map';
+import { DEFAULT_SETTINGS } from '@shared/model';
+import { projectFolderName } from '@shared/map';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { bridge } from '../bridge';
 import { FileGlyph } from '../map/glyphs';
-import { ui, useIae } from '../state/store';
+import { closeLensThen } from '../lens/control';
+import { applyEvent, ui, useIae } from '../state/store';
 import { ESC, isMod, onEscape } from '../ui/escape';
 import {
   BackIcon,
@@ -48,8 +50,34 @@ const ICONS: Record<IconName, (p: { size?: number }) => ReactNode> = {
 let pendingView: PaletteView | null = null;
 let showView: ((v: PaletteView) => void) | null = null;
 
+const PANEL = 'data-palette';
+
 export function Palette() {
   const open = useIae((st) => st.paletteOpen);
+  const returnTo = useRef<HTMLElement | null>(null);
+
+  // Remember where focus was outside the palette, and put it back when the
+  // palette closes (Esc while a file is open returns to its editor, not <body>).
+  useEffect(() => {
+    const onFocus = (e: FocusEvent) => {
+      const el = e.target;
+      if (el instanceof HTMLElement && !el.closest(`[${PANEL}]`)) returnTo.current = el;
+    };
+    const el = document.activeElement;
+    if (el instanceof HTMLElement && el !== document.body) returnTo.current = el;
+    document.addEventListener('focusin', onFocus);
+    return () => document.removeEventListener('focusin', onFocus);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (open) return;
+    const el = returnTo.current;
+    if (!el || !el.isConnected) return;
+    const active = document.activeElement;
+    // Only when focus would otherwise be lost: in the closing palette, or nowhere.
+    if (active && active !== document.body && !active.closest(`[${PANEL}]`)) return;
+    el.focus({ preventScroll: true });
+  }, [open]);
 
   // ⌘K toggles from anywhere, including inside the editor and text fields.
   useEffect(() => {
@@ -98,7 +126,7 @@ function PalettePanel() {
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const leadName = useIae((st) => st.settings.leadName || 'Archie');
+  const leadName = useIae((st) => st.settings.leadName || DEFAULT_SETTINGS.leadName);
   const close = useCallback(() => ui.setPalette(false), []);
 
   const slashQ = parseSlash(query);
@@ -189,6 +217,7 @@ function PalettePanel() {
       <motion.div className={s.scrim} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.16 }} onMouseDown={close} />
       <motion.div
         className={s.panel}
+        {...{ [PANEL]: '' }}
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
@@ -307,18 +336,30 @@ function NewProject({ onDone }: { onDone: () => void }) {
     void bridge.getHome().then((h) => setParent(h.defaultParent), () => undefined);
   }, []);
 
-  const create = async () => {
-    const n = name.trim();
-    if (!n || busy) return;
+  const mounted = useRef(true);
+  useEffect(() => () => void (mounted.current = false), []);
+
+  const doCreate = async (n: string) => {
     setBusy(true);
     setError(null);
     try {
       await bridge.createProject(n, parent || undefined);
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setBusy(false);
+      const text = err instanceof Error ? err.message : String(err);
+      if (mounted.current) {
+        setError(text);
+        setBusy(false);
+      } else applyEvent({ type: 'notice', level: 'error', text: `Couldn't create ${n}. ${text}` });
     }
+  };
+
+  // Unsaved edits in the lens are asked about first (the palette steps aside so the question is visible).
+  const create = () => {
+    const n = name.trim();
+    if (!n || busy) return;
+    if (useIae.getState().openFile) onDone();
+    closeLensThen(() => void doCreate(n));
   };
 
   return (
@@ -340,7 +381,7 @@ function NewProject({ onDone }: { onDone: () => void }) {
         disabled={busy}
       />
       <p className={s.newWhere}>
-        {error ? <span className={s.newError}>{error}</span> : parent ? `${tildify(parent)}/${slug(name || 'new-project')}` : ' '}
+        {error ? <span className={s.newError}>{error}</span> : parent ? `${tildify(parent)}/${projectFolderName(name || 'New project')}` : ' '}
       </p>
       <div className={s.foot}>
         <span className={s.keys}>

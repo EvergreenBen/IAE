@@ -43,6 +43,14 @@ export const EyeOffIcon = (p: P) => (
   </Svg>
 );
 
+/** Soft wrap: a line that runs to the edge and turns back. */
+export const WrapIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M2.75 4h10.5M2.75 8h8.5a2 2 0 0 1 0 4H8.5M2.75 12h3" />
+    <path d="M9.75 10.5L8.25 12l1.5 1.5" />
+  </Svg>
+);
+
 export const PlusIcon = (p: P) => (
   <Svg {...p}>
     <path d="M8 3.25v9.5M3.25 8h9.5" />

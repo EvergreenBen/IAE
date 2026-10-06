@@ -72,7 +72,7 @@ export const Tiles = memo(function Tiles({ tiles, delay }: { tiles: FileChip[]; 
             <FileGlyph path={t.path} size={15} />
             <span className={s.tileName}>{t.name}</span>
           </span>
-          {meaning ? <span className={s.tileNote}>{t.note ?? <span className={s.noNote}>No note yet</span>}</span> : <span className={s.tileDir}>{t.dir || '/'}</span>}
+          {meaning ? <span className={s.tileNote}>{t.note ?? <span className={s.noNote}>{t.dir || '/'}</span>}</span> : <span className={s.tileDir}>{t.dir || '/'}</span>}
         </motion.button>
       ))}
     </>

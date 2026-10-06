@@ -130,6 +130,31 @@
   background: var(--paper-sunk);
 }
 
+/* A quiet header toggle (soft wrap). */
+.tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: var(--r-pill);
+  color: var(--ink-4);
+  transition:
+    color var(--t-fast) var(--ease-out),
+    background var(--t-fast) var(--ease-out);
+}
+
+.tool:hover {
+  color: var(--ink-2);
+  background: var(--paper-sunk);
+}
+
+.toolOn {
+  color: var(--ink-2);
+  background: color-mix(in srgb, var(--paper-sunk) 70%, transparent);
+}
+
 /* ── body ────────────────────────────────────────────────────────────────── */
 
 .body {

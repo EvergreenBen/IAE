@@ -41,12 +41,23 @@ export function useVoice(hooks: VoiceHooks): void {
 
     const offEvents = bridge.onEvent((e) => {
       if (e.type === 'lead/delta') {
-        if (tts.opts.enabled && tts.supported) tts.delta(e.turnId, e.text);
-        else if (/\S/.test(e.text)) speechPulse(0.6); // no voice: the mouth follows the words
+        if (tts.opts.enabled && tts.supported) {
+          // Never start speaking over someone who is talking.
+          if (useIae.getState().voice.mic === 'hearing') tts.muteIfNew(e.turnId);
+          tts.delta(e.turnId, e.text);
+        } else if (/\S/.test(e.text)) speechPulse(0.6); // no voice: the mouth follows the words
       } else if (e.type === 'lead/done') {
-        if (tts.opts.enabled && tts.supported && e.text) tts.done(e.turnId, e.text);
+        // Always passed on (even empty), so a skipped turn that said nothing still clears.
+        if (tts.opts.enabled && tts.supported) tts.done(e.turnId, e.text);
+      } else if (e.type === 'project/opened' || e.type === 'project/closed') {
+        // Nothing queued, spoken or still transcribing for the last project carries over.
+        tts.reset();
+        voice.reset();
+        if (e.type === 'project/opened') voice.prewarmSoon();
       }
     });
+    // A project is open: for people who use voice, have the speech model ready before they need it.
+    voice.prewarmSoon();
 
     return () => {
       offEvents();

@@ -3,6 +3,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { SlashCommandInfo } from '@shared/model';
+import { DEFAULT_SETTINGS } from '@shared/model';
 import { Archie } from '../avatar/Archie';
 import { useArchieLevel, useArchieState, useCrewWorking } from '../avatar/useArchieState';
 import { bridge } from '../bridge';
@@ -51,7 +52,7 @@ export function IntentLine() {
   const mic = useIae((s) => s.voice.mic);
   const loadProgress = useIae((s) => s.voice.loadProgress);
   const handsFree = useIae((s) => s.settings.voice.handsFree);
-  const leadName = useIae((s) => s.settings.leadName || 'Archie');
+  const leadName = useIae((s) => s.settings.leadName || DEFAULT_SETTINGS.leadName);
 
   const isSlash = text.startsWith('/');
   const slashQuery = isSlash ? text.slice(1).split(/\s/)[0] : '';

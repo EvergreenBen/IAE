@@ -66,6 +66,44 @@ describe('env headings', () => {
   });
 });
 
+describe('env file header', () => {
+  it('keeps a comment block above a blank line out of the first key', () => {
+    const text = '# Recipe Box, local dev\n# Copy to .env.local\n\nDATABASE_URL=x\nREDIS_URL=y\n';
+    const doc = parseEnv(text);
+    expect(entriesOf(doc)[0].note).toBeNull();
+    expect(doc.items.slice(0, 2)).toMatchObject([
+      { kind: 'comment', text: 'Recipe Box, local dev' },
+      { kind: 'comment', text: 'Copy to .env.local' },
+    ]);
+    expect(serializeEnv(doc)).toBe(text);
+  });
+
+  it("reads the file's opening comment over a run of keys as a header, not a note", () => {
+    const text = '# FAKE demo values - not real credentials\nDATABASE_URL=postgres://x\nGOOGLE_CLIENT_ID=y\n# Where people land\nREDIRECT=z\n';
+    const doc = parseEnv(text);
+    const [db, google, redirect] = entriesOf(doc);
+    expect(doc.items[0]).toMatchObject({ kind: 'comment', text: 'FAKE demo values - not real credentials' });
+    expect(db.note).toBeNull();
+    expect(google.note).toBeNull();
+    expect(redirect.note).toBe('Where people land');
+    expect(serializeEnv(doc)).toBe(text);
+    // Editing a value next to the header leaves the header where it was.
+    expect(serializeEnv(updateEntry(doc, db.id, { value: 'postgres://y' }))).toBe(text.replace('postgres://x', 'postgres://y'));
+  });
+
+  it('still reads a top comment over a lone key as its note', () => {
+    const text = '# Postgres for local dev\nDATABASE_URL=x\n\n# Redis\nREDIS_URL=y\n';
+    const doc = parseEnv(text);
+    expect(entriesOf(doc).map((e) => e.note)).toEqual(['Postgres for local dev', 'Redis']);
+    expect(serializeEnv(doc)).toBe(text);
+  });
+
+  it('round-trips a CRLF file with a header', () => {
+    const text = '# header\r\nA=1\r\nB=2\r\n';
+    expect(serializeEnv(parseEnv(text))).toBe(text);
+  });
+});
+
 describe('env edits', () => {
   it('changes only the edited line', () => {
     const doc = parseEnv(SAMPLE);

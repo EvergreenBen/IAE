@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { bridge } from '../bridge';
 import { ui, useIae } from '../state/store';
 import { ESC, IS_MAC, isMod, onEscape } from '../ui/escape';
-import { CloseIcon } from '../ui/icons';
+import { CloseIcon, WrapIcon } from '../ui/icons';
 import { Kbd } from '../ui/Kbd';
 import { NodeMark } from '../ui/NodeMark';
 import { Segmented } from '../ui/Segmented';
@@ -16,8 +16,10 @@ import { AskBar } from './AskBar';
 import { CodeView } from './CodeView';
 import { registerLensCloser } from './control';
 import { EnvEditor } from './EnvEditor';
-import { isEnvFile } from './languages';
+import { detectEol, fromLf, toLf, type Eol } from './eol';
+import { isEnvFile, wrapsByDefault } from './languages';
 import { Meaning } from './Meaning';
+import { rememberWrap, wrapFor } from './wrapPref';
 import s from './Lens.module.css';
 
 type Mode = 'code' | 'meaning';
@@ -48,6 +50,8 @@ function LensSheet({ path }: { path: string }) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | { then: () => void }>(null);
   const [mode, setMode] = useState<Mode>(() => (useIae.getState().meaning ? 'meaning' : 'code'));
+  /** Soft wrap chosen in this lens; null follows the remembered default for this kind of file. */
+  const [wrapChoice, setWrapChoice] = useState<boolean | null>(null);
   const [agentNote, setAgentNote] = useState<{ name: string; hue: number } | null>(null);
   const openedAt = useRef(Date.now());
 
@@ -62,27 +66,46 @@ function LensSheet({ path }: { path: string }) {
   const dirty = file !== null && !file.unreadable && draft !== saved;
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
+  // The editors report every keystroke here synchronously, so async work can
+  // tell whether something was typed while it waited (state lags a render).
+  const draftRef = useRef('');
+  const savedRef = useRef('');
+  // The file's own line endings: the editors work in "\n", saving restores these.
+  const eolRef = useRef<Eol>('\n');
+  const loadSeq = useRef(0);
+
+  const edit = useCallback((text: string) => {
+    draftRef.current = text;
+    setDraft(text);
+  }, []);
 
   // ── load ──────────────────────────────────────────────────────────────────
   const load = useCallback(
     (quiet = false) => {
-      let alive = true;
+      const seq = ++loadSeq.current;
+      const typed = draftRef.current;
       if (!quiet) {
+        // A fresh open starts clean, whatever the previous file held.
+        draftRef.current = savedRef.current = '';
         setFile(null);
         setLoadError(null);
       }
       bridge.readFile(path).then(
         (fc) => {
-          if (!alive) return;
+          if (seq !== loadSeq.current) return; // a newer read, or the lens moved on
+          // A quiet reload (an agent touched the file) never clobbers edits, including keystrokes typed during the read.
+          if (quiet && (draftRef.current !== savedRef.current || draftRef.current !== typed)) return;
+          const text = fc.unreadable ? '' : toLf(fc.content);
+          eolRef.current = detectEol(fc.content);
+          draftRef.current = savedRef.current = text;
           setFile(fc);
-          setDraft(fc.content);
-          setSaved(fc.content);
+          setDraft(text);
+          setSaved(text);
         },
-        (err: unknown) => alive && setLoadError(err instanceof Error ? err.message : String(err)),
+        (err: unknown) => {
+          if (seq === loadSeq.current && !quiet) setLoadError(err instanceof Error ? err.message : String(err));
+        },
       );
-      return () => {
-        alive = false;
-      };
     },
     [path],
   );
@@ -92,7 +115,11 @@ function LensSheet({ path }: { path: string }) {
     setConfirm(null);
     setSaveError(null);
     setAgentNote(null);
-    return load();
+    setWrapChoice(null);
+    load();
+    return () => {
+      loadSeq.current++;
+    };
   }, [load]);
 
   // Follow ⌘M while open.
@@ -110,7 +137,7 @@ function LensSheet({ path }: { path: string }) {
     if (!touch || touch.at < openedAt.current || touch.action === 'read') return;
     const agent = useIae.getState().agents[touch.agentId];
     setAgentNote({ name: agent?.name ?? 'An agent', hue: agent?.hue ?? 0 });
-    if (!dirtyRef.current) load(true);
+    if (draftRef.current === savedRef.current) load(true);
     const t = setTimeout(() => setAgentNote(null), 6000);
     return () => clearTimeout(t);
   }, [touch, load]);
@@ -122,7 +149,8 @@ function LensSheet({ path }: { path: string }) {
     setSaving(true);
     setSaveError(null);
     try {
-      await bridge.writeFile(path, draft);
+      await bridge.writeFile(path, fromLf(draft, eolRef.current));
+      savedRef.current = draft;
       setSaved(draft);
       setFlash('saved');
       return true;
@@ -165,6 +193,10 @@ function LensSheet({ path }: { path: string }) {
         e.preventDefault();
         e.stopPropagation();
         void save();
+      } else if (e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyZ' && canWrapRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleWrapRef.current();
       }
     };
     window.addEventListener('keydown', onKey, true);
@@ -190,6 +222,18 @@ function LensSheet({ path }: { path: string }) {
   const dir = slash >= 0 ? path.slice(0, slash + 1) : '';
   const name = path.slice(slash + 1);
   const env = isEnvFile(path, file?.language);
+  const prose = wrapsByDefault(path, file?.language);
+  const wrap = wrapChoice ?? wrapFor(prose);
+  const canWrap = mode === 'code' && !!file && !file.unreadable && !env && !loadError;
+  const toggleWrap = () => {
+    const next = !wrap;
+    setWrapChoice(next);
+    rememberWrap(prose, next);
+  };
+  const canWrapRef = useRef(canWrap);
+  canWrapRef.current = canWrap;
+  const toggleWrapRef = useRef(toggleWrap);
+  toggleWrapRef.current = toggleWrap;
 
   let body: ReactNode = null;
   if (mode === 'meaning') {
@@ -220,9 +264,9 @@ function LensSheet({ path }: { path: string }) {
       </div>
     );
   } else if (env) {
-    body = <EnvEditor key={path} path={path} text={draft} saved={saved} onChange={setDraft} />;
+    body = <EnvEditor key={path} path={path} text={draft} saved={saved} onChange={edit} />;
   } else {
-    body = <CodeView key={path} path={path} language={file.language} doc={draft} onChange={setDraft} />;
+    body = <CodeView key={path} path={path} language={file.language} doc={draft} onChange={edit} wrap={wrap} />;
   }
 
   return (
@@ -276,6 +320,18 @@ function LensSheet({ path }: { path: string }) {
               </motion.span>
             )}
           </AnimatePresence>
+          {canWrap && (
+            <button
+              type="button"
+              className={wrap ? `${s.tool} ${s.toolOn}` : s.tool}
+              onClick={toggleWrap}
+              aria-pressed={wrap}
+              aria-label="Wrap long lines"
+              title={`${wrap ? 'Stop wrapping' : 'Wrap long lines'} (${IS_MAC ? '⌥Z' : 'Alt+Z'})`}
+            >
+              <WrapIcon size={15} />
+            </button>
+          )}
           <Segmented<Mode>
             label="View"
             value={mode}

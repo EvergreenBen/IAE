@@ -23,7 +23,7 @@
   width: 100%;
   max-width: 560px;
   margin: 0 auto;
-  padding: 15vh var(--s-5) var(--s-7);
+  padding: max(var(--s-7), 15vh - 16px) var(--s-5) var(--s-3);
   overflow-y: auto;
 }
 
@@ -156,13 +156,26 @@
 
 /* ── recent ──────────────────────────────────────────────────────────────── */
 
+/* Takes the room left above the footer; the list fits itself into it. */
 .recent {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 150px;
   width: 100%;
-  margin-top: var(--s-6);
+  margin-top: var(--s-5);
+}
+
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 var(--s-2);
+  padding-right: var(--s-2);
 }
 
 .label {
-  margin: 0 0 var(--s-2);
+  margin: 0;
   padding: 0 var(--s-4);
   font-size: var(--text-sm);
   font-weight: 500;
@@ -170,9 +183,47 @@
 }
 
 .list {
+  position: relative;
+  flex: 0 1 auto;
+  min-height: 0;
   margin: 0;
   padding: 0;
   list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Cut short: only whole projects show; the rest wait behind "N more". */
+.listCut {
+  overflow: hidden;
+}
+
+/* Opened up: the rest scroll in the same space, fading at the edge. */
+.listScroll {
+  padding-block: var(--s-3) var(--s-5);
+  scroll-padding-block: var(--s-3) var(--s-5);
+  mask-image: linear-gradient(to bottom, transparent, black var(--s-3), black calc(100% - var(--s-5)), transparent);
+}
+
+.beyond {
+  visibility: hidden;
+}
+
+.more {
+  height: 24px;
+  margin: -4px 0;
+  padding: 0 var(--s-2);
+  border-radius: var(--r-pill);
+  font-size: var(--text-sm);
+  color: var(--ink-3);
+  transition:
+    color var(--t-fast) var(--ease-out),
+    background var(--t-fast) var(--ease-out);
+}
+
+.more:hover {
+  color: var(--ink);
+  background: var(--paper-sunk);
 }
 
 .item {
@@ -234,6 +285,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* dir="rtl" puts the ellipsis at the start; the text still reads left to right. */
+  text-align: left;
 }
 
 .time {

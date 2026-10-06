@@ -1,11 +1,12 @@
 // The lens's code surface: CodeMirror 6 on paper. Uncontrolled editor with a
 // controlled-ish contract: `doc` replaces the content only when it differs
 // from what the editor already holds (reload, revert), so typing never
-// round-trips through React.
+// round-trips through React. `doc` uses "\n" line breaks; the lens restores
+// the file's own endings when it saves (see eol.ts).
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { bracketMatching, indentOnInput } from '@codemirror/language';
 import { closeSearchPanel, highlightSelectionMatches, search, searchKeymap, searchPanelOpen } from '@codemirror/search';
-import { EditorState } from '@codemirror/state';
+import { Compartment, EditorState } from '@codemirror/state';
 import {
   drawSelection,
   EditorView,
@@ -28,11 +29,18 @@ interface Props {
   doc: string;
   onChange: (text: string) => void;
   autoFocus?: boolean;
+  /** Soft-wrap long lines (prose) instead of scrolling sideways (code). */
+  wrap?: boolean;
 }
 
-export function CodeView({ path, language, doc, onChange, autoFocus }: Props) {
+const wrapping = (on: boolean) => (on ? EditorView.lineWrapping : []);
+
+export function CodeView({ path, language, doc, onChange, autoFocus, wrap = false }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const wrapSlot = useRef(new Compartment());
+  const wrapRef = useRef(wrap);
+  wrapRef.current = wrap;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const docRef = useRef(doc);
@@ -61,6 +69,7 @@ export function CodeView({ path, language, doc, onChange, autoFocus }: Props) {
           }),
           EditorView.contentAttributes.of({ 'aria-label': `Contents of ${path}`, spellcheck: 'false', autocorrect: 'off' }),
           paperTheme,
+          wrapSlot.current.of(wrapping(wrapRef.current)),
           lang ?? [],
         ],
       }),
@@ -89,6 +98,10 @@ export function CodeView({ path, language, doc, onChange, autoFocus }: Props) {
     const current = view.state.doc.toString();
     if (current !== doc) view.dispatch({ changes: { from: 0, to: current.length, insert: doc } });
   }, [doc]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: wrapSlot.current.reconfigure(wrapping(wrap)) });
+  }, [wrap]);
 
   return <div ref={host} className={s.code} />;
 }

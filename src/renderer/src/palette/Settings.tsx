@@ -9,9 +9,9 @@ import { MinusIcon, PlusIcon } from '../ui/icons';
 import s from './Palette.module.css';
 
 const AUTONOMY: { value: Autonomy; label: string; hint: string }[] = [
-  { value: 'ask', label: 'Ask first', hint: 'Builders check with you before editing a file or running a command.' },
-  { value: 'edits', label: 'Edit freely', hint: 'They edit files on their own and ask before running commands.' },
-  { value: 'full', label: 'Full autonomy', hint: 'They work unattended. Best on a branch you can throw away.' },
+  { value: 'ask', label: 'Ask first', hint: 'Builders ask before they change a file or run a command.' },
+  { value: 'edits', label: 'Edit files freely', hint: 'Builders change files on their own, and ask before running a command.' },
+  { value: 'full', label: 'Full autonomy', hint: 'Builders never stop to ask. Best on a branch you can throw away.' },
 ];
 
 const MAX_BUILDERS = 8;

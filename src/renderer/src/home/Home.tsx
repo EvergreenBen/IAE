@@ -1,9 +1,9 @@
 // Home: the calm place between projects. Archie, one question, two ways in,
 // and the projects you were last working on.
 import type { HomeInfo } from '@shared/bridge';
-import { slug } from '@shared/map';
+import { projectFolderName } from '@shared/map';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Archie, type ArchieState } from '../avatar/Archie';
 import { bridge } from '../bridge';
 import { Notices } from '../palette/Notices';
@@ -18,6 +18,9 @@ const rise = (i: number) => ({
   transition: { duration: 0.42, delay: 0.05 + i * 0.07, ease: [0.22, 1, 0.36, 1] as const },
 });
 
+/** Wrap a path for a right-to-left box, so a long one loses its start ("…/Projects/recipe-box"), never its folder name. */
+const tail = (path: string) => `\u200E${path}\u200E`;
+
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
 export function Home() {
@@ -28,6 +31,11 @@ export function Home() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  /** How many recents fit whole in the space left (null: all of them). */
+  const [fit, setFit] = useState<number | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -45,6 +53,43 @@ export function Home() {
   }, []);
 
   const recent = home?.recent ?? [];
+
+  // Never cut a project in half above the footer: show the ones that fit whole,
+  // and "N more" beside the label for the rest (which then scroll in the same space).
+  useLayoutEffect(() => {
+    const sec = sectionRef.current;
+    const list = listRef.current;
+    if (!sec || !list) return;
+    const measure = () => {
+      const room = sec.clientHeight - (list.getBoundingClientRect().top - sec.getBoundingClientRect().top);
+      const bottoms = Array.from(list.children, (li) => (li as HTMLElement).offsetTop + (li as HTMLElement).offsetHeight);
+      if (!bottoms.length || bottoms[bottoms.length - 1] <= room) return setFit(null);
+      let n = 0;
+      while (n < bottoms.length && bottoms[n] <= room) n++;
+      setFit(Math.max(1, n));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(sec);
+    return () => ro.disconnect();
+  }, [recent]);
+
+  const collapsed = !showAll && fit !== null;
+  const shown = collapsed ? fit : recent.length;
+  const listHeight = (() => {
+    if (!collapsed || !listRef.current) return undefined;
+    const last = listRef.current.children[fit - 1] as HTMLElement | undefined;
+    return last ? last.offsetTop + last.offsetHeight : undefined;
+  })();
+
+  // Arrowing past the last one shown opens the rest, and keeps the choice in view.
+  const keyed = useRef(false);
+  useEffect(() => {
+    if (active === null || !keyed.current) return;
+    if (active >= shown) return setShowAll(true); // scrolls on the next pass, once the rest show
+    keyed.current = false;
+    listRef.current?.children[active]?.scrollIntoView({ block: 'nearest' });
+  }, [active, shown]);
 
   const open = useCallback(async (root: string) => {
     setBusy(root);
@@ -109,6 +154,7 @@ export function Home() {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         const d = e.key === 'ArrowDown' ? 1 : -1;
+        keyed.current = true;
         setActive((a) => (a === null ? (d > 0 ? 0 : recent.length - 1) : (a + d + recent.length) % recent.length));
       } else if (e.key === 'Enter' && active !== null && recent[active]) {
         e.preventDefault();
@@ -120,7 +166,7 @@ export function Home() {
   }, [recent, active, busy, open, openFolder]);
 
   const archie: ArchieState = busy ? 'thinking' : naming && name ? 'listening' : 'idle';
-  const target = home?.defaultParent ? `${tildify(home.defaultParent)}/${slug(name || 'new-project')}` : '';
+  const target = home?.defaultParent ? `${tildify(home.defaultParent)}/${projectFolderName(name || 'New project')}` : '';
 
   return (
     <MotionConfig reducedMotion="user">
@@ -192,24 +238,41 @@ export function Home() {
         </AnimatePresence>
 
         {home && (
-          <motion.section className={s.recent} {...rise(3)} aria-label="Recent projects">
+          <motion.section ref={sectionRef} className={s.recent} {...rise(3)} aria-label="Recent projects">
             {recent.length > 0 ? (
               <>
-                <h2 className={s.label}>Recent</h2>
-                <ul className={s.list} role="listbox" aria-label="Recent projects" onMouseLeave={() => setActive(null)}>
+                <div className={s.labelRow}>
+                  <h2 className={s.label}>Recent</h2>
+                  {collapsed && (
+                    <button type="button" className={s.more} onClick={() => setShowAll(true)}>
+                      {recent.length - shown} more
+                    </button>
+                  )}
+                </div>
+                <ul
+                  ref={listRef}
+                  className={[s.list, collapsed && s.listCut, showAll && fit !== null && s.listScroll].filter(Boolean).join(' ')}
+                  style={listHeight !== undefined ? { maxHeight: listHeight } : undefined}
+                  role="listbox"
+                  aria-label="Recent projects"
+                  onMouseLeave={() => setActive(null)}
+                >
                   {recent.map((p, i) => (
                     <li
                       key={p.root}
                       role="option"
                       aria-selected={active === i}
-                      className={[s.item, active === i && s.active, busy && busy !== p.root && s.dim].filter(Boolean).join(' ')}
+                      aria-hidden={i >= shown || undefined}
+                      className={[s.item, active === i && s.active, busy && busy !== p.root && s.dim, i >= shown && s.beyond].filter(Boolean).join(' ')}
                       onMouseEnter={() => setActive(i)}
                       onClick={() => !busy && void open(p.root)}
                     >
                       <div className={s.itemMain}>
                         <span className={s.name}>{p.name}</span>
                         {p.summary && <span className={s.summary}>{p.summary}</span>}
-                        <span className={s.path}>{tildify(p.root)}</span>
+                        <span className={s.path} dir="rtl" title={p.root}>
+                          {tail(tildify(p.root))}
+                        </span>
                       </div>
                       <span className={s.time}>{busy === p.root ? 'Opening…' : relativeTime(p.lastOpenedAt)}</span>
                     </li>

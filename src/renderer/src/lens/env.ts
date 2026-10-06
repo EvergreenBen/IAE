@@ -6,7 +6,11 @@
 // Edited entries are re-formatted minimally.
 //
 // Comments directly above an entry (no blank line between) become that entry's
-// note. Other comments stand alone and read as section headings.
+// note. Other comments stand alone and read as section headings: a block
+// separated from the next entry by a blank line, a ruled comment ("# ── DB ──"),
+// and the file's opening comment when it sits on top of a run of entries
+// ("# Local dev values" over DATABASE_URL, REDIS_URL, …), which describes the
+// file, not just its first key.
 
 export interface EnvEntry {
   id: string;
@@ -135,6 +139,8 @@ export function parseEnv(text: string): EnvDoc {
         return '';
       });
     }
+    // The file's opening comment over a run of entries is a header, not the first key's note.
+    if (pending.length && isFileHeader(items) && i + 1 < lines.length && ASSIGN.test(lines[i + 1])) flush();
     const note = pending.length ? pending.map(commentText).join('\n') : null;
     const noteRaw = pending.length ? pending : null;
     const raw = rawLines.join(eol);
@@ -156,6 +162,9 @@ export function parseEnv(text: string): EnvDoc {
   flush();
   return { items, eol, trailingNewline };
 }
+
+/** Nothing but blank lines came before: a comment here opens the file. */
+const isFileHeader = (before: EnvItem[]): boolean => before.every((it) => it.kind === 'blank');
 
 function findClose(body: string, q: string): number {
   for (let k = 0; k < body.length; k++) {

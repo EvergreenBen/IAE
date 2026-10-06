@@ -1,5 +1,6 @@
 // Pick a CodeMirror language for a file. Grammar packages for the common web
-// languages; tiny stream modes for .env and SQL so they still read well.
+// languages; tiny stream modes for .env and SQL so they still read well, and
+// CodeMirror's legacy modes for config formats (YAML, TOML, Dockerfile).
 import { css } from '@codemirror/lang-css';
 import { html } from '@codemirror/lang-html';
 import { javascript } from '@codemirror/lang-javascript';
@@ -7,7 +8,11 @@ import { json } from '@codemirror/lang-json';
 import { markdown } from '@codemirror/lang-markdown';
 import { python } from '@codemirror/lang-python';
 import { StreamLanguage, type StreamParser } from '@codemirror/language';
+import { dockerFile } from '@codemirror/legacy-modes/mode/dockerfile';
+import { toml } from '@codemirror/legacy-modes/mode/toml';
+import { yaml } from '@codemirror/legacy-modes/mode/yaml';
 import type { Extension } from '@codemirror/state';
+import { tags } from '@lezer/highlight';
 
 const envParser: StreamParser<{ afterEq: boolean }> = {
   name: 'env',
@@ -82,10 +87,16 @@ const shellParser: StreamParser<null> = {
 const envLanguage = StreamLanguage.define(envParser);
 const sqlLanguage = StreamLanguage.define(sqlParser);
 const shellLanguage = StreamLanguage.define(shellParser);
+// The YAML mode calls keys "atom" and true/yes/on "keyword"; read them as
+// property names and booleans, like the .env mode does.
+const yamlLanguage = StreamLanguage.define({ ...yaml, tokenTable: { atom: tags.propertyName, keyword: tags.bool } });
+const tomlLanguage = StreamLanguage.define(toml);
+const dockerLanguage = StreamLanguage.define(dockerFile);
 
 const ext = (path: string) => {
   const base = path.split('/').pop() ?? '';
   if (base === '.env' || base.startsWith('.env.') || base.endsWith('.env')) return 'env';
+  if (/^(dockerfile|containerfile)(\..+)?$/i.test(base) || /\.dockerfile$/i.test(base)) return 'dockerfile';
   const dot = base.lastIndexOf('.');
   return dot > 0 ? base.slice(dot + 1).toLowerCase() : base.toLowerCase();
 };
@@ -138,9 +149,27 @@ export function languageFor(path: string, language?: string): Extension | null {
     case 'zsh':
     case 'shell':
       return shellLanguage;
+    case 'yml':
+    case 'yaml':
+      return yamlLanguage;
+    case 'toml':
+      return tomlLanguage;
+    case 'dockerfile':
+      return dockerLanguage;
     default:
       return null;
   }
+}
+
+const PROSE = new Set(['md', 'mdx', 'markdown', 'txt', 'text', 'rst', 'adoc', 'asciidoc', 'org', 'log']);
+const PROSE_NAMES = /^(readme|license|licence|changelog|changes|authors|contributing|notice|copying|todo|history)(\..*)?$/i;
+
+/** Prose and long-line files read best wrapped; code keeps its lines. */
+export function wrapsByDefault(path: string, language?: string): boolean {
+  const base = path.split('/').pop() ?? '';
+  if (PROSE_NAMES.test(base) && !/\.(js|ts|py|json|ya?ml|toml|html?)$/i.test(base)) return true;
+  if (language === 'markdown') return true;
+  return PROSE.has(ext(path));
 }
 
 /** Prefer JSX-aware parsing for .tsx/.jsx even when the engine says 'typescript'. */

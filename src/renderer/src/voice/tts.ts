@@ -81,9 +81,51 @@ class Speaker {
     return this.audible;
   }
 
+  /**
+   * The person spoke up (or pressed ⌘.) before the reply in flight had begun:
+   * the next turn to show up is that stale reply (the engine runs one turn at
+   * a time), so it stays silent. Cleared once that turn appears, even if it
+   * says nothing. 'soft' (they started talking) is lifted again if they turn
+   * out to have said nothing; 'hard' (⌘.) never is.
+   */
+  private skipPending: false | 'soft' | 'hard' = false;
+
+  skipPendingTurn(hard = false): void {
+    if (!this.opts.enabled || !this.supported) return;
+    this.skipPending = hard || this.skipPending === 'hard' ? 'hard' : 'soft';
+  }
+
+  /** They started talking but said nothing usable: a reply still on its way may speak after all. */
+  releasePendingSkip(): void {
+    if (this.skipPending === 'soft') this.skipPending = false;
+  }
+
+  /** A reply that would *start* now stays silent (someone is talking); one already speaking is left to barge-in. */
+  muteIfNew(turnId: string): void {
+    if (turnId !== this.turnId) this.muted.add(turnId);
+  }
+
+  /** Project switch: nothing queued or pending carries over. */
+  reset(): void {
+    this.cancel();
+    this.skipPending = false;
+    this.muted.clear();
+    this.turnId = null;
+  }
+
+  private isMuted(turnId: string): boolean {
+    if (this.muted.has(turnId)) return true;
+    if (turnId !== this.turnId && this.skipPending) {
+      this.skipPending = false;
+      this.muted.add(turnId);
+      return true;
+    }
+    return false;
+  }
+
   /** A streamed piece of the lead's reply. */
   delta(turnId: string, text: string): void {
-    if (this.muted.has(turnId)) return;
+    if (this.isMuted(turnId)) return;
     if (turnId !== this.turnId) {
       this.turnId = turnId;
       this.chunker.reset();
@@ -93,7 +135,7 @@ class Speaker {
 
   /** The reply is complete: speak what's left (or all of it, if nothing streamed). */
   done(turnId: string, text: string): void {
-    if (this.muted.has(turnId)) return;
+    if (this.isMuted(turnId)) return;
     if (turnId !== this.turnId) {
       this.turnId = turnId;
       this.chunker.reset();

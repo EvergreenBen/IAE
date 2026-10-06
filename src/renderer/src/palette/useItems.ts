@@ -65,11 +65,12 @@ export function usePaletteItems(open: boolean, setView: (v: PaletteView) => void
         section: 'commands',
         title: 'Open project…',
         keywords: 'folder repo switch',
-        run: () => {
-          void bridge.pickFolder().then((root) => {
-            if (root) void bridge.openProject(root);
-          });
-        },
+        run: () =>
+          closeLensThen(() => {
+            void bridge.pickFolder().then((root) => {
+              if (root) void bridge.openProject(root);
+            });
+          }),
       },
       {
         id: 'cmd:meaning',
@@ -116,7 +117,7 @@ export function usePaletteItems(open: boolean, setView: (v: PaletteView) => void
         keepOpen: true,
         run: () => setView('settings'),
       },
-      { id: 'cmd:close', icon: 'exit', section: 'commands', title: 'Close project', hint: 'Back to Home', keywords: 'home exit leave', run: () => void bridge.closeProject() },
+      { id: 'cmd:close', icon: 'exit', section: 'commands', title: 'Close project', hint: 'Back to Home', keywords: 'home exit leave', run: () => closeLensThen(() => void bridge.closeProject()) },
     );
 
     // ── nodes
@@ -184,7 +185,7 @@ export function usePaletteItems(open: boolean, setView: (v: PaletteView) => void
         title: p.name,
         hint: p.summary ?? p.root,
         keywords: p.root,
-        run: () => void bridge.openProject(p.root),
+        run: () => closeLensThen(() => void bridge.openProject(p.root)),
       });
     }
 
