@@ -1,0 +1,20 @@
+# `npm run package` → release/mac-arm64/IAE.app (unsigned, for local use)
+appId: com.evergreen.iae
+productName: IAE
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+# Claude Code's native binary must live outside the asar archive to be executable.
+asarUnpack:
+  - node_modules/@anthropic-ai/claude-agent-sdk/**
+  - node_modules/@anthropic-ai/claude-agent-sdk-*/**
+mac:
+  target: dir
+  icon: build/icon.icns
+  category: public.app-category.developer-tools
+  identity: null
+  extendInfo:
+    NSMicrophoneUsageDescription: IAE listens while you hold Space, or when hands-free voice is on.

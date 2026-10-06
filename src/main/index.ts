@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, session, shell, systemPreferences } from 'electron';
+import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +12,13 @@ const here = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPat
 
 adoptLoginShellPath();
 app.setName('IAE');
+
+// Packaged builds: Claude Code's native binary is unpacked next to the asar
+// archive (see electron-builder.yml). Point the Agent SDK at it.
+if (app.isPackaged && !process.env.IAE_CLAUDE_PATH) {
+  const unpacked = join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@anthropic-ai', `claude-agent-sdk-${process.platform}-${process.arch}`, process.platform === 'win32' ? 'claude.exe' : 'claude');
+  if (existsSync(unpacked)) process.env.IAE_CLAUDE_PATH = unpacked;
+}
 
 let win: BrowserWindow | null = null;
 const emit = windowEmitter(() => win);

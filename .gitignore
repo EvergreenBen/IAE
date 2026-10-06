@@ -18,3 +18,4 @@ test-results/
 # Per-project IAE state created when examples are opened in place
 examples/**/.iae/
 *.tsbuildinfo
+release/
