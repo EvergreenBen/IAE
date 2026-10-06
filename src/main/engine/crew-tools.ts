@@ -5,6 +5,7 @@ import { createSdkMcpServer, tool, type McpSdkServerConfigWithInstance, type Sdk
 import { z } from 'zod';
 import type { AgendaItem, NodeStatus, OpSource } from '../../shared/model';
 import { projectPath } from './activity';
+import { anchorNode } from './agenda';
 import { describeResult, normalizeOps, opInput, type OpName } from './mapops';
 import { fail, guard, ok } from './tools';
 import type { Workspace } from './workspace';
@@ -70,7 +71,7 @@ export function createCrewTools(h: CrewToolHost): McpSdkServerConfigWithInstance
           guard('ask_architect', async () => {
             if (!args.prompt?.trim()) return fail('prompt is required.');
             const blocking = !!args.blocking;
-            const nodeId = args.node_id && ws.map.nodes[args.node_id] ? args.node_id : null;
+            const nodeId = anchorNode(ws.map, args.node_id, ws.view.scopeId);
             const item = ws.agenda.ask({
               prompt: args.prompt,
               kind: 'decision',
@@ -87,7 +88,11 @@ export function createCrewTools(h: CrewToolHost): McpSdkServerConfigWithInstance
             h.onWaiting?.(true);
             const answer = await ws.agenda.waitFor(item.id, ANSWER_TIMEOUT_MS, h.signal);
             h.onWaiting?.(false);
-            if (answer === null) return ok('No answer. Use your best default, note the assumption in your final summary, and continue.');
+            if (answer === null) {
+              // Going on with a default: the card no longer holds this builder up.
+              ws.agenda.removeBlocker(item.id, h.agentId);
+              return ok('No answer. Use your best default, note the assumption in your final summary, and continue.');
+            }
             return ok(`The architect answered: ${answer}`);
           }),
       ),

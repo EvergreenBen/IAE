@@ -6,11 +6,10 @@ import { query, type McpSdkServerConfigWithInstance, type Query, type SDKMessage
 import { nanoid } from 'nanoid';
 import type { EngineEvent } from '../../shared/events';
 import type { Settings } from '../../shared/model';
-import { buildContext, wrapTurn, type TurnKind } from './context';
-import { leadSystemPrompt } from './prompts';
-import { baseOptions, errorText, InputQueue, log, looksLikeAuthError } from './sdk';
+import { buildContext, wrapTurn, type MapSeen, type TurnKind } from './context';
+import { leadOptions } from './lead-options';
+import { errorText, InputQueue, log, looksLikeAuthError } from './sdk';
 import { cleanReply, SpeechFilter } from './speech';
-import { LEAD_TOOL_NAMES } from './tools';
 import type { LeadEvent, Workspace } from './workspace';
 
 export interface LeadDeps {
@@ -21,7 +20,11 @@ export interface LeadDeps {
   makeTools: () => McpSdkServerConfigWithInstance;
   crewLines: () => string[];
   agentName: (id: string) => string;
+  /** Set when a new job would have to wait for a builder slot. */
+  slots?: () => string | undefined;
   onClaudeStatus: (ok: boolean, detail?: string) => void;
+  /** A turn ended (spoken, silent or cut off). */
+  onTurnEnd?: (kind: TurnKind, spoke: boolean) => void;
 }
 
 interface PendingTurn {
@@ -41,6 +44,8 @@ interface Turn extends PendingTurn {
   afterTools: boolean;
   muted: boolean;
   interrupted: boolean;
+  /** Barged in after the opening was said: tools finish, nothing more is spoken. */
+  softStopped: boolean;
   heard: boolean;
   /** Events this turn delivered (restored if the turn has to be retried). */
   events: LeadEvent[];
@@ -60,12 +65,21 @@ const TURN_TIMEOUT = 240_000;
 const INTERRUPT_GRACE = 4_000;
 /** An opening shorter than this ("Let me look.") may be followed by text after tools. */
 const MIN_OPENING_WORDS = 6;
+/** The whole map is re-sent at least this often (in turns) when it keeps changing. */
+const FULL_MAP_EVERY = 25;
 
 export class Lead {
   private session: Session | null = null;
   private queue: PendingTurn[] = [];
   private turn: Turn | null = null;
-  private sentMapVersion = 0;
+  /** The map as this session last saw it (null: it hasn't seen one yet). */
+  private seen: MapSeen | null = null;
+  private turnsSinceFullMap = 0;
+  private sessionTurns = 0;
+  /** Failed attempts to resume the stored session; after two, start fresh for this run. */
+  private resumeTries = 0;
+  /** One-time notes for the next turn's context. */
+  private notes: string[] = [];
   private stale = false;
   private closed = false;
   /** When the last reply finished, and roughly when its speech will end. */
@@ -85,6 +99,11 @@ export class Lead {
 
   get turnKind(): TurnKind | null {
     return this.turn?.kind ?? null;
+  }
+
+  /** The turn in flight has already said its piece (later text won't be spoken). */
+  get hasSpoken(): boolean {
+    return !!this.turn && cleanReply(this.turn.raw).split(/\s+/).filter(Boolean).length >= MIN_OPENING_WORDS;
   }
 
   send(kind: TurnKind, body: string): void {
@@ -112,7 +131,16 @@ export class Lead {
   async interrupt(): Promise<void> {
     const turn = this.turn;
     const session = this.session;
-    if (!turn || !session || turn.interrupted) return;
+    if (!turn || !session || turn.interrupted || turn.softStopped) return;
+    // The person already heard the opening ("I've added Billing, Ada's starting it");
+    // cutting the tool calls now would make that untrue. Let them finish silently;
+    // the person's next words run right after.
+    if (this.saidOpening(turn)) {
+      turn.softStopped = true;
+      turn.muted = true;
+      this.d.emit({ type: 'lead/state', state: 'thinking' });
+      return;
+    }
     turn.interrupted = true;
     // If the session doesn't come back promptly, finish the turn ourselves.
     setTimeout(() => {
@@ -129,8 +157,13 @@ export class Lead {
     }
   }
 
-  /** Settings changed (model, effort, name): use a fresh session from the next turn. */
-  refresh(): void {
+  /**
+   * Settings changed (model, effort, name): use a fresh session (resumed, so
+   * the conversation continues) from the next turn. A note tells the lead what
+   * changed — its history still says the old name.
+   */
+  refresh(note?: string): void {
+    if (note) this.notes.push(note);
     this.stale = true;
     if (!this.turn && this.session) this.dropSession(this.session);
   }
@@ -148,29 +181,13 @@ export class Lead {
   private createSession(): Session {
     const s = this.d.settings();
     const ws = this.d.ws;
-    const resume = ws.state.leadSessionId;
+    const resume = this.resumeTries < 2 ? ws.state.leadSessionId : undefined;
     const input = new InputQueue();
-    const q = query({
-      prompt: input,
-      options: {
-        ...baseOptions(ws.root),
-        model: s.leadModel,
-        effort: s.leadEffort,
-        systemPrompt: leadSystemPrompt(s.leadName, s.maxBuilders),
-        tools: ['Read', 'Glob', 'Grep'],
-        mcpServers: { iae: this.d.makeTools() },
-        allowedTools: [...LEAD_TOOL_NAMES.map((n) => `mcp__iae__${n}`), 'Read', 'Glob', 'Grep'],
-        permissionMode: 'dontAsk',
-        strictMcpConfig: true,
-        settingSources: [],
-        includePartialMessages: true,
-        persistSession: true,
-        ...(resume ? { resume } : {}),
-      },
-    });
+    const q = query({ prompt: input, options: leadOptions(ws.root, s, this.d.makeTools(), resume) });
     const session: Session = { q, input, usedResume: !!resume, gotInit: false, closing: false };
     // A fresh session hasn't seen the map yet (a resumed one saw an old one).
-    this.sentMapVersion = 0;
+    this.seen = null;
+    this.sessionTurns = 0;
     this.stale = false;
     void this.consume(session);
     log('lead', `session started (${s.leadModel}, effort ${s.leadEffort}${resume ? ', resumed' : ''})`);
@@ -207,19 +224,25 @@ export class Lead {
     if (this.closed) return;
     log('lead', 'session ended', failure ?? '(stream closed)');
     const turn = this.turn;
-    if (session.usedResume && !session.gotInit) return this.resumeFailed(session, turn);
+    if (session.usedResume && !session.gotInit) return this.resumeFailed(session, turn, failure ?? '');
     if (failure && looksLikeAuthError(failure)) this.d.onClaudeStatus(false, failure);
     else if (failure) this.d.emit({ type: 'notice', level: 'warn', text: `${this.d.settings().leadName} lost the connection to Claude and is reconnecting.` });
     if (turn) this.finishTurn(turn);
     this.pump();
   }
 
-  /** The stored session couldn't be resumed: forget it, start fresh, retry the turn once. */
-  private resumeFailed(session: Session, turn: Turn | null): void {
-    log('lead', 'could not resume the previous session; starting a fresh one');
-    this.d.ws.saveState({ leadSessionId: undefined });
+  /**
+   * The stored session couldn't be resumed. Forget it only when Claude Code
+   * says it's gone; a transient startup failure is retried once with resume,
+   * then this run starts fresh. The turn is retried.
+   */
+  private resumeFailed(session: Session, turn: Turn | null, why: string): void {
+    const gone = /no conversation found|session[^.]*not found/i.test(why);
+    this.resumeTries = gone ? 2 : this.resumeTries + 1;
+    if (gone) this.d.ws.saveState({ leadSessionId: undefined });
+    log('lead', `could not resume the previous session (${why || 'no reason given'}); ${this.resumeTries < 2 ? 'trying again' : 'starting a fresh one'}`);
     this.dropSession(session);
-    if (turn && turn.retries < 1) {
+    if (turn && turn.retries < 2) {
       this.clearTurn(turn);
       for (const e of turn.events) this.d.ws.pushEvent(e.text, e.urgent);
       this.queue.unshift({ kind: turn.kind, body: turn.body, retries: turn.retries + 1 });
@@ -239,11 +262,22 @@ export class Lead {
 
   private startTurn(session: Session, pending: PendingTurn): void {
     const ws = this.d.ws;
-    const includeMap = this.sentMapVersion !== ws.mapVersion;
-    this.sentMapVersion = ws.mapVersion;
-    const context = buildContext({ ws, crew: this.d.crewLines(), agentName: this.d.agentName, includeMap });
+    const stale = this.turnsSinceFullMap >= FULL_MAP_EVERY && this.seen?.version !== ws.mapVersion;
+    const context = buildContext({
+      ws,
+      crew: this.d.crewLines(),
+      agentName: this.d.agentName,
+      seen: stale ? null : this.seen,
+      withDecisions: this.sessionTurns === 0,
+      slots: this.d.slots?.(),
+      notes: this.notes.splice(0),
+      kind: pending.kind,
+    });
+    this.seen = { version: ws.mapVersion, ids: new Set(Object.keys(ws.map.nodes)) };
+    this.turnsSinceFullMap = context.fullMap ? 0 : this.turnsSinceFullMap + 1;
+    this.sessionTurns++;
     const events = ws.takeEvents();
-    const text = wrapTurn(context, events, pending.kind, pending.body);
+    const text = wrapTurn(context.text, events, pending.kind, pending.body);
     const turn: Turn = {
       ...pending,
       id: `turn-${nanoid(8)}`,
@@ -255,6 +289,7 @@ export class Lead {
       afterTools: false,
       muted: false,
       interrupted: false,
+      softStopped: false,
       heard: false,
       events,
       watchdog: null,
@@ -282,6 +317,8 @@ export class Lead {
     const turn = this.turn;
     if (m.type === 'system' && m.subtype === 'init') {
       session.gotInit = true;
+      // This session (resumed or fresh) is the one to resume from now on.
+      this.resumeTries = 0;
       this.d.onClaudeStatus(true);
       if (m.session_id && m.session_id !== this.d.ws.state.leadSessionId) this.d.ws.saveState({ leadSessionId: m.session_id });
       return;
@@ -314,12 +351,16 @@ export class Lead {
       return;
     }
     if (m.type === 'result') {
-      if (m.subtype !== 'success' && session.usedResume && !session.gotInit) return this.resumeFailed(session, turn);
+      if (m.subtype !== 'success' && session.usedResume && !session.gotInit) return this.resumeFailed(session, turn, m.errors?.join('; ') ?? '');
       if (m.session_id && m.session_id !== this.d.ws.state.leadSessionId) this.d.ws.saveState({ leadSessionId: m.session_id });
       if (m.subtype !== 'success' && !turn.interrupted) log('lead', 'turn ended with', m.subtype, m.errors?.join('; '));
       this.finishTurn(turn);
       this.pump();
     }
+  }
+
+  private saidOpening(turn: Turn): boolean {
+    return turn.afterTools && cleanReply(turn.raw).split(/\s+/).filter(Boolean).length >= MIN_OPENING_WORDS;
   }
 
   /**
@@ -329,7 +370,7 @@ export class Lead {
   private blockStart(turn: Turn, type: string): void {
     if (type === 'tool_use' || type === 'server_tool_use') turn.afterTools = true;
     if (type !== 'text' || turn.muted) return;
-    if (turn.afterTools && cleanReply(turn.raw).split(/\s+/).filter(Boolean).length >= MIN_OPENING_WORDS) {
+    if (this.saidOpening(turn)) {
       turn.muted = true;
       return;
     }
@@ -363,9 +404,12 @@ export class Lead {
     this.d.emit({ type: 'lead/state', state: 'idle' });
     this.lastDoneAt = Date.now();
     const words = text ? text.split(/\s+/).length : 0;
-    this.speechEndsAt = this.lastDoneAt + Math.max(4000, words * 360);
-    // A reply cut off by barge-in is kept only if it said something (with an ellipsis).
-    const kept = turn.interrupted ? (words >= 3 ? `${text}…` : '') : text;
+    // Silence, or a reply the person talked over, leaves nothing to wait out.
+    const audible = words > 0 && !turn.interrupted && !turn.softStopped;
+    this.speechEndsAt = this.lastDoneAt + (audible ? Math.max(4000, words * 360) : 0);
+    // A reply cut off by barge-in is kept only if it said something, marked as cut ("—").
+    const kept = turn.interrupted ? (words >= 3 ? `${text.replace(/[\s,;:]+$/, '')}—` : '') : text;
     if (kept) this.d.ws.appendTranscript('lead', kept, this.d.ws.view.selectedNodeId);
+    this.d.onTurnEnd?.(turn.kind, !!text);
   }
 }

@@ -156,6 +156,12 @@ export interface NormalizeResult {
 export function normalizeOps(raw: unknown[], map: ArchMap, opts: NormalizeOptions = {}): NormalizeResult {
   const out: NormalizeResult = { ops: [], nodeIds: [], edgeIds: [], notes: [] };
   const exists = new Set(Object.keys(map.nodes));
+  // Parents as they will be after the ops so far, to refuse cycles across the batch.
+  const parents = new Map<string, string | null>(Object.values(map.nodes).map((n) => [n.id, n.parentId]));
+  const wouldCycle = (id: string, parentId: string | null): boolean => {
+    for (let cur = parentId, steps = 0; cur && steps <= parents.size; cur = parents.get(cur) ?? null, steps++) if (cur === id) return true;
+    return false;
+  };
   const edges = new Set(Object.keys(map.edges));
   const allowed = new Set<string>(opts.allowed ?? OP_NAMES);
   const fixPath = (p: string): string => {
@@ -186,6 +192,11 @@ export function normalizeOps(raw: unknown[], map: ArchMap, opts: NormalizeOption
           parentId = null;
         }
         if (parentId === id) parentId = null;
+        if (parentId && !isNew && wouldCycle(id, parentId)) {
+          out.notes.push(`${where}: "${id}" can't go inside its own descendant "${parentId}"; kept where it was.`);
+          parentId = undefined;
+        }
+        if (parentId !== undefined || isNew) parents.set(id, parentId ?? null);
         const paths = Array.isArray(n.paths) ? n.paths.filter((p): p is string => typeof p === 'string' && !!p.trim()).map(fixPath) : undefined;
         const tech = Array.isArray(n.tech) ? n.tech.filter((t): t is string => typeof t === 'string').map((t) => t.trim()).filter(Boolean).slice(0, 5) : undefined;
         const status = normalizeStatus(n.status) ?? (isNew && opts.defaultStatus ? opts.defaultStatus({ paths }) : undefined);
@@ -214,6 +225,7 @@ export function normalizeOps(raw: unknown[], map: ArchMap, opts: NormalizeOption
         if (!exists.has(id)) return void out.notes.push(`${where}: no node "${id}" to remove.`);
         out.ops.push({ op: 'removeNode', id });
         exists.delete(id);
+        parents.delete(id);
         break;
       }
       case 'moveNode': {
@@ -221,7 +233,9 @@ export function normalizeOps(raw: unknown[], map: ArchMap, opts: NormalizeOption
         if (!exists.has(id)) return void out.notes.push(`${where}: no node "${id}" to move.`);
         const parentId = o.parentId == null ? null : normalizeId(o.parentId);
         if (parentId && !exists.has(parentId)) return void out.notes.push(`${where}: no parent "${parentId}" to move "${id}" into.`);
+        if (parentId && wouldCycle(id, parentId)) return void out.notes.push(`${where}: "${id}" can't move inside itself or its descendant "${parentId}".`);
         out.ops.push({ op: 'moveNode', id, parentId });
+        parents.set(id, parentId);
         break;
       }
       case 'upsertEdge': {

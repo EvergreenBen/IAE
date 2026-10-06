@@ -58,10 +58,8 @@ export function describeToolUse(
       const creating = !!abs && !fileExists(abs);
       return fileTool(root, raw, creating ? 'Creating' : 'Writing', 'write', creating ? 'create' : 'edit');
     }
-    case 'Bash': {
-      const cmd = typeof input.command === 'string' ? shortCommand(input.command, root) : '';
-      return { kind: 'bash', activity: cmd ? `Running ${clip(cmd, 42)}` : 'Running a command' };
-    }
+    case 'Bash':
+      return { kind: 'bash', activity: typeof input.command === 'string' ? humanCommand(input.command, root) : 'Running a command' };
     case 'Grep': {
       const pattern = typeof input.pattern === 'string' ? input.pattern : '';
       return { kind: 'search', activity: pattern ? `Searching for '${clip(pattern, 32)}'` : 'Searching the code' };
@@ -102,6 +100,41 @@ export function describeToolUse(
       return { kind: 'tool', activity: `Using ${name}` };
     }
   }
+}
+
+// What a shell command is for, in plain words. A chain ("ls && npm install &&
+// npm test") is named by its most telling step.
+const COMMAND_PHRASES: [RegExp, string][] = [
+  [/^(npm|pnpm|yarn|bun)\s+(i|install|ci|add)\b|^pip3?\s+install\b|^(poetry|uv)\s+(add|install|sync)\b|^cargo\s+add\b|^go\s+get\b/, 'Installing packages'],
+  [/\b(prisma\s+(migrate|db\s+push)|drizzle-kit|knex\s+migrate|alembic\s+upgrade)\b|\brun\s+(db:)?migrat/, 'Running migrations'],
+  [/^(npm|pnpm|yarn|bun)\s+(t|test)\b|\brun\s+test|^(npx\s+)?(vitest|jest|mocha|playwright\s+test)\b|^pytest\b|^(go|cargo)\s+test\b/, 'Running tests'],
+  [/^(npx\s+)?tsc\b|\brun\s+(typecheck|type-check|tsc|check)\b/, 'Typechecking'],
+  [/\brun\s+build\b|^(npx\s+)?(next|vite|tsup|esbuild)\s+build\b|^(go|cargo)\s+build\b|^make\b/, 'Building'],
+  [/\brun\s+lint\b|^(npx\s+)?(eslint|prettier|biome)\b/, 'Checking code style'],
+  [/\brun\s+(dev|start|serve)\b|^(npx\s+)?(next|vite)\s+dev\b|^(npm|pnpm|yarn)\s+start\b/, 'Starting the dev server'],
+  [/^git\s+(add|commit)\b/, 'Committing changes'],
+  [/^git\s+(status|diff)\b/, 'Reviewing changes'],
+  [/^git\s+(log|show|blame)\b/, 'Reading git history'],
+  [/^docker\b|^open\s+-a\s+docker/i, 'Using Docker'],
+  [/^(mkdir)\b/, 'Creating folders'],
+  [/^(rm|rmdir)\b/, 'Removing files'],
+  [/^(mv|cp)\b/, 'Moving files'],
+  [/^(curl|wget)\b/, 'Calling a web address'],
+  [/^(ls|find|tree|cat|head|tail|grep|rg|wc|pwd|which|stat|file|du|echo|printf|sed\s+-n|node\s+(-v|--version)|(npm|pnpm|yarn)\s+(-v|--version|ls|list|view|info))\b/, 'Checking the project'],
+];
+
+/** "Running tests", "Installing packages", or the command word and its target (≤ 40 chars). */
+export function humanCommand(command: string, root?: string): string {
+  const segments = command
+    .split(/&&|\|\||;|\||\n/)
+    .map((s) => shortCommand(s, root).replace(/^([A-Za-z_][A-Za-z0-9_]*=\S*\s+)+/, '').trim())
+    .filter((s) => s && !/^(cd|export|set|source|\.)\b/.test(s));
+  for (const [re, phrase] of COMMAND_PHRASES) if (segments.some((s) => re.test(s))) return phrase;
+  const first = segments[0];
+  if (!first) return 'Running a command';
+  const [prog, ...args] = first.split(/\s+/);
+  const target = args.find((a) => !a.startsWith('-'));
+  return clip(`Running ${basename(prog)}${target ? ` ${basename(target.replace(/^["']|["']$/g, ''))}` : ''}`, 40);
 }
 
 /** The interesting part of a shell command: first line, without a leading `cd … &&`. */

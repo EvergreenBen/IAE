@@ -1,8 +1,14 @@
 // The never-idle heartbeat. Every few seconds it asks: is the person quiet,
-// is the lead idle (and done speaking), and is anything worth raising? If so it
-// nudges the lead. Urgent events (a build finished, a builder is blocked) go
-// out as soon as the person isn't mid-utterance; plain nudges wait for ~20s of
-// quiet and back off (45s → 90s → 180s) until the person speaks again.
+// is the lead idle (and done speaking), and is there something new worth
+// raising? If so it nudges the lead. Urgent events (a build finished, a
+// builder is blocked) go out as soon as the person isn't mid-utterance; plain
+// nudges wait for ~20s of quiet and back off (45s → 90s → 180s) until the
+// person speaks again.
+//
+// "New" matters: a question the lead already asked is on screen as a card, so
+// it isn't raised again; builders at work earn one nudge (use their time to
+// settle the next decision); events always count. When nothing is new the
+// pulse stays quiet instead of asking the lead to repeat itself.
 
 import type { TurnKind } from './context';
 import type { Workspace } from './workspace';
@@ -21,7 +27,16 @@ export interface PulseLead {
 export interface PulseDeps {
   ws: Workspace;
   lead: PulseLead;
+  /** Builders and scouts at work right now. */
+  working?: () => { id: string; name: string }[];
   now?: () => number;
+}
+
+export type PulseReason = 'events' | 'agenda' | 'crew' | 'empty';
+
+interface Topic {
+  key: string;
+  why: PulseReason;
 }
 
 export class Pulse {
@@ -29,6 +44,8 @@ export class Pulse {
   private wake: ReturnType<typeof setTimeout> | null = null;
   private level = 0;
   private lastNudgeAt = 0;
+  /** Topics the lead has already had its chance to raise. */
+  private seen = new Set<string>();
 
   constructor(private readonly d: PulseDeps) {}
 
@@ -53,14 +70,42 @@ export class Pulse {
     setTimeout(() => this.tick(), 0);
   }
 
-  /** What a nudge would be about, or null when nothing clears the bar. */
-  pending(): string | null {
+  /**
+   * A lead turn ended. Whatever was on the agenda then has been heard (the
+   * lead saw it in context and a card is on screen). Builders at work still
+   * earn their own nudge unless this was one.
+   */
+  turnEnded(kind: TurnKind): void {
+    for (const t of this.topics()) if (t.why !== 'crew' || kind === 'pulse') this.seen.add(t.key);
+  }
+
+  private topics(): Topic[] {
     const { ws } = this.d;
-    if (ws.hasEvents()) return 'events';
-    const open = ws.agenda.open();
-    if (open.length) return 'agenda';
-    if (ws.info.isNew && Object.keys(ws.map.nodes).length === 0) return 'empty';
-    return null;
+    const out: Topic[] = [];
+    const top = ws.agenda.open()[0];
+    if (top) out.push({ key: `top:${top.id}`, why: 'agenda' });
+    const working = this.d.working?.() ?? [];
+    if (working.length) out.push({ key: `crew:${working.map((a) => a.id).sort().join(',')}`, why: 'crew' });
+    if (ws.info.isNew && Object.keys(ws.map.nodes).length === 0) out.push({ key: 'empty', why: 'empty' });
+    return out;
+  }
+
+  /** What a nudge would be about, or null when nothing new clears the bar. */
+  pending(): PulseReason | null {
+    if (this.d.ws.hasEvents()) return 'events';
+    return this.topics().find((t) => !this.seen.has(t.key))?.why ?? null;
+  }
+
+  private body(why: PulseReason, quiet: number): string {
+    const secs = `the person has been quiet for ${Math.round(quiet / 1000)}s`;
+    if (why === 'crew') {
+      const names = (this.d.working?.() ?? []).map((a) => a.name);
+      const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)} are` : `${names[0] ?? 'the crew'} is`;
+      return `${secs}; ${who} building. Use the time: if a real decision is coming up (for the work in flight or what comes after), raise it now. Otherwise <silence/>.`;
+    }
+    if (why === 'agenda') return `${secs}; the top open question hasn't been raised yet.`;
+    if (why === 'empty') return `${secs} on an empty project.`;
+    return secs;
   }
 
   tick(): 'events' | 'pulse' | null {
@@ -88,7 +133,8 @@ export class Pulse {
     if (!why) return null;
     this.lastNudgeAt = now;
     this.level++;
-    lead.send('pulse', `the person has been quiet for ${Math.round(quiet / 1000)}s`);
+    for (const t of this.topics()) this.seen.add(t.key);
+    lead.send('pulse', this.body(why, quiet));
     return 'pulse';
   }
 }

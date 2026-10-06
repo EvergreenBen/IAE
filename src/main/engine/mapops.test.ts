@@ -27,6 +27,22 @@ describe('normalizeOps', () => {
     expect(r.notes[0]).toMatch(/parent "nope" doesn't exist/);
   });
 
+  it('refuses parent cycles, including ones built up across the batch', () => {
+    const r = normalizeOps(
+      [
+        { op: 'upsertNode', node: { id: 'api-auth', label: 'Auth', parentId: 'api' } },
+        { op: 'upsertNode', node: { id: 'api-auth-oauth', label: 'OAuth', parentId: 'api-auth' } },
+        { op: 'upsertNode', node: { id: 'api', parentId: 'api-auth-oauth', summary: 'Hono server' } },
+        { op: 'moveNode', id: 'api-auth', parentId: 'api-auth-oauth' },
+        { op: 'moveNode', id: 'web', parentId: 'api-auth' },
+      ],
+      base,
+    );
+    expect(r.ops[2]).toEqual({ op: 'upsertNode', node: { id: 'api', summary: 'Hono server' } });
+    expect(r.ops.filter((o) => o.op === 'moveNode')).toEqual([{ op: 'moveNode', id: 'web', parentId: 'api-auth' }]);
+    expect(r.notes.filter((n) => /descendant/.test(n))).toHaveLength(2);
+  });
+
   it('keeps an existing node’s fields when the op omits them', () => {
     const r = normalizeOps([{ op: 'upsertNode', node: { id: 'api', summary: 'Hono server' } }], base);
     expect(r.ops[0]).toEqual({ op: 'upsertNode', node: { id: 'api', summary: 'Hono server' } });

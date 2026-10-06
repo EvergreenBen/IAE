@@ -7,6 +7,7 @@ import { basename } from 'node:path';
 import type { EngineEvent } from '../../shared/events';
 import type { AgendaItem, AgentInfo, Settings } from '../../shared/model';
 import { BuilderRun, type JobSpec, type Outcome, type PermissionAsk } from './builder';
+import { noteNewFiles } from './notes';
 import { log } from './sdk';
 import type { Workspace } from './workspace';
 
@@ -39,6 +40,8 @@ export class Crew {
   private permissions = new Map<string, PendingPermission>();
   /** Non-blocking questions a builder asked: item id → agent id (answers get forwarded). */
   private askedBy = new Map<string, string>();
+  /** Who stopped a job, so the lead's digest says so (and doesn't guess why). */
+  private stoppedBy = new Map<string, 'person' | 'lead'>();
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private closed = false;
 
@@ -49,9 +52,14 @@ export class Crew {
     return [...this.runs.values()].filter((r) => !this.finishedAt.has(r.agent.id)).map((r) => r.agent);
   }
 
+  /** By id or name; a name means the newest unfinished run with it ("ada" while "ada-2" works). */
   find(idOrName: string): BuilderRun | undefined {
     const key = idOrName.trim().toLowerCase();
-    return this.runs.get(key) ?? [...this.runs.values()].reverse().find((r) => r.agent.name.toLowerCase() === key);
+    const live = (r: BuilderRun) => !this.finishedAt.has(r.agent.id);
+    const byId = this.runs.get(key);
+    if (byId && live(byId)) return byId;
+    const newest = [...this.runs.values()].reverse();
+    return newest.find((r) => live(r) && r.agent.name.toLowerCase() === key) ?? byId ?? newest.find((r) => r.agent.name.toLowerCase() === key);
   }
 
   nameOf(id: string): string {
@@ -89,6 +97,12 @@ export class Crew {
     return run.agent;
   }
 
+  /** A note for the lead when a new job would have to wait for a slot. */
+  slotsNote(): string | undefined {
+    const max = this.d.settings().maxBuilders;
+    return this.active() + this.queue.length >= max ? `all ${max} builder slots are busy: a new job waits in the queue` : undefined;
+  }
+
   isQueued(id: string): boolean {
     return this.queue.some((r) => r.agent.id === id);
   }
@@ -105,6 +119,11 @@ export class Crew {
 
   private active(): number {
     return [...this.runs.values()].filter((r) => r.isRunning).length;
+  }
+
+  /** Settings changed (e.g. more builder slots): start whatever now fits. */
+  kick(): void {
+    this.pump();
   }
 
   private pump(): void {
@@ -131,9 +150,10 @@ export class Crew {
     return run.message(text) ? `Sent to ${run.agent.name}.` : `${run.agent.name} can't take messages right now.`;
   }
 
-  async stop(idOrName: string): Promise<string> {
+  async stop(idOrName: string, by: 'person' | 'lead' = 'person'): Promise<string> {
     const run = this.find(idOrName);
     if (!run || this.finishedAt.has(run.agent.id)) return `No running agent "${idOrName}".`;
+    this.stoppedBy.set(run.agent.id, by);
     const queued = this.queue.indexOf(run);
     if (queued !== -1) {
       this.queue.splice(queued, 1);
@@ -191,12 +211,18 @@ export class Crew {
     this.d.onLeadEvent();
   }
 
-  /** An agenda item was answered: forward non-blocking answers to whoever asked. */
-  answered(item: AgendaItem): void {
+  /**
+   * An agenda item was answered: forward non-blocking answers to whoever asked.
+   * Returns the names of builders that now have the answer (blocked ones get it
+   * through their wait), so the lead doesn't relay it a second time.
+   */
+  answered(item: AgendaItem): string[] {
+    const told = (item.blocking ?? []).map((id) => this.nameOf(id));
     const agentId = this.askedBy.get(item.id);
-    if (!agentId) return;
+    if (!agentId) return told;
     this.askedBy.delete(item.id);
-    this.runs.get(agentId)?.message(`Answer to your question "${item.prompt}": ${item.answer}`);
+    if (this.runs.get(agentId)?.message(`Answer to your question "${item.prompt}": ${item.answer}`)) told.push(this.nameOf(agentId));
+    return told;
   }
 
   private onFinished(run: BuilderRun, outcome: Outcome): void {
@@ -217,9 +243,17 @@ export class Crew {
     const where = run.job.nodeId ? ` on ${run.job.nodeId}` : '';
     const summary = clip(outcome.result.replace(/\s+/g, ' ').trim(), 400);
     const verb = outcome.status === 'done' ? (run.isScout ? 'found' : 'finished') : outcome.status === 'failed' ? 'failed' : 'was stopped on';
-    ws.pushEvent(`${run.agent.name} ${verb} "${run.job.title}"${where}${outcome.status === 'stopped' ? '' : `: ${summary}`}`, outcome.status !== 'stopped');
+    if (outcome.status === 'stopped') {
+      const by = this.stoppedBy.get(id);
+      const what = `${run.agent.name} on "${run.job.title}"${where} before it finished`;
+      ws.pushEvent(by === 'lead' ? `You stopped ${what}` : by === 'person' ? `The person stopped ${what}` : `${run.agent.name} was stopped on "${run.job.title}"${where}`, false);
+    } else {
+      ws.pushEvent(`${run.agent.name} ${verb} "${run.job.title}"${where}: ${summary}`, true);
+    }
     ws.appendTranscript('system', `${run.agent.name} ${verb} ${run.job.title}.`, run.job.nodeId);
-    void ws.rescan();
+    // New files get one-line meanings (the builder's own notes win).
+    const created = [...run.created];
+    void ws.rescan().then(() => (created.length && outcome.status === 'done' ? noteNewFiles(ws, created, this.d.settings().sketchModel) : 0));
     this.later(REMOVE_AFTER_MS, () => this.d.emit({ type: 'agent/remove', agentId: id }));
     this.later(REMEMBER_MS, () => this.finishedAt.has(id) && this.runs.delete(id));
     this.pump();

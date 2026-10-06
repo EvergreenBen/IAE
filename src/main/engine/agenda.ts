@@ -3,7 +3,24 @@
 // lead's estimate of the cost of getting it wrong), then age.
 
 import { nanoid } from 'nanoid';
-import type { AgendaItem, AgendaKind, Decision } from '../../shared/model';
+import { ancestorsOf, visibleAncestor } from '../../shared/map';
+import type { AgendaItem, AgendaKind, ArchMap, Decision } from '../../shared/model';
+
+/**
+ * Where a question card goes: on the node being discussed as seen from where
+ * the person is looking. A card on a leaf deep inside only shows as a dot at
+ * higher zoom, so it moves up to the node that's visible at the current scope
+ * (the scope itself or one of its children). Outside the scope it sits no
+ * deeper than a top-level node's child.
+ */
+export function anchorNode(map: ArchMap, nodeId: string | null | undefined, scopeId: string | null): string | null {
+  if (!nodeId || !map.nodes[nodeId]) return null;
+  if (nodeId === scopeId) return nodeId;
+  const visible = visibleAncestor(map, nodeId, scopeId);
+  if (visible) return visible;
+  const chain = ancestorsOf(map, nodeId);
+  return chain.length > 1 ? chain[1].id : nodeId;
+}
 
 export const MAX_OPEN = 5;
 const KEEP_CLOSED = 40;
@@ -97,11 +114,13 @@ export class Agenda {
     }
   }
 
+  /**
+   * Closes an item with the person's answer. The decision it settles is
+   * recorded by the lead (decide, in its own words), not here, so each choice
+   * is stored once.
+   */
   answer(id: string, answer: string): AgendaItem | null {
-    const item = this.close(id, 'answered', answer);
-    if (!item) return null;
-    if (item.kind === 'decision') this.decide({ title: answer, rationale: item.prompt, nodeId: item.nodeId });
-    return item;
+    return this.close(id, 'answered', answer);
   }
 
   dismiss(id: string): AgendaItem | null {
@@ -132,6 +151,16 @@ export class Agenda {
     this.save();
   }
 
+  /** The agent stopped waiting on this item (it timed out and went on with a default). */
+  removeBlocker(id: string, agentId: string): void {
+    const i = this.items.findIndex((x) => x.id === id);
+    if (i === -1 || this.items[i].status !== 'open' || !this.items[i].blocking?.includes(agentId)) return;
+    const item = { ...this.items[i], blocking: this.items[i].blocking!.filter((a) => a !== agentId) };
+    this.items[i] = item;
+    this.sink.upsert(item);
+    this.save();
+  }
+
   /** Removes an agent from every item it was blocking (it stopped or finished). */
   releaseAgent(agentId: string): void {
     this.items = this.items.map((item) => {
@@ -150,14 +179,19 @@ export class Agenda {
     if (item.status !== 'open') return Promise.resolve(item.status === 'answered' ? (item.answer ?? '') : null);
     return new Promise((resolve) => {
       let done = false;
+      const onAbort = () => finish(null);
       const finish = (v: string | null) => {
         if (done) return;
         done = true;
         clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        const rest = (this.waiters.get(id) ?? []).filter((w) => w !== finish);
+        if (rest.length) this.waiters.set(id, rest);
+        else this.waiters.delete(id);
         resolve(v);
       };
       const timer = setTimeout(() => finish(null), timeoutMs);
-      signal?.addEventListener('abort', () => finish(null), { once: true });
+      signal?.addEventListener('abort', onAbort, { once: true });
       const list = this.waiters.get(id) ?? [];
       list.push(finish);
       this.waiters.set(id, list);

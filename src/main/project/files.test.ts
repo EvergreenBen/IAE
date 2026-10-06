@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -76,6 +76,15 @@ describe('read / write', () => {
     await expect(readProjectFile(root, 'link-out/secret.txt')).rejects.toThrow(/outside the project/);
     await expect(writeProjectFile(root, 'link-out/new.txt', 'x')).rejects.toThrow(/outside the project/);
     await expect(writeProjectFile(root, '.git/config', 'x')).rejects.toThrow(/\.git/);
+  });
+
+  it('refuses to write through a link that points nowhere (it would create the target outside)', async () => {
+    const target = join(outside, 'not-yet', 'planted.txt');
+    symlinkSync(target, join(root, 'dangling.txt'));
+    symlinkSync(join(outside, 'missing-dir'), join(root, 'dangling-dir'));
+    await expect(writeProjectFile(root, 'dangling.txt', 'x')).rejects.toThrow(/points nowhere/);
+    await expect(writeProjectFile(root, 'dangling-dir/new.txt', 'x')).rejects.toThrow(/points nowhere/);
+    expect(existsSync(join(outside, 'missing-dir'))).toBe(false);
   });
 
   it('writes files, creating folders', async () => {

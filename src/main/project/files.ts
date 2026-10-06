@@ -7,7 +7,6 @@
 // the headline "find it on the map" case.
 
 import { watch, type FSWatcher } from 'chokidar';
-import { existsSync } from 'node:fs';
 import { lstat, mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import ignore, { type Ignore } from 'ignore';
@@ -146,9 +145,13 @@ export function hasNoCode(files: ScannedFile[]): boolean {
 
 // ── watch ────────────────────────────────────────────────────────────────────
 
+/** Deep enough for real projects; keeps a stray link farm from crawling forever. */
+const WATCH_DEPTH = 24;
+
 export class FileWatcher {
   private watcher: FSWatcher | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private closed = false;
 
   constructor(
     private readonly root: string,
@@ -158,10 +161,15 @@ export class FileWatcher {
 
   async start(): Promise<void> {
     const rules = await rootRules(this.root);
+    // Closed while the rules loaded: don't start a watcher nobody will close.
+    if (this.closed) return;
     const root = this.root;
     this.watcher = watch(root, {
       ignoreInitial: true,
       persistent: true,
+      // A symlink to a big folder outside the project would be crawled too.
+      followSymlinks: false,
+      depth: WATCH_DEPTH,
       ignored: (abs: string, stats?: { isDirectory(): boolean }) => {
         const rel = toPosix(relative(root, abs));
         if (!rel || rel.startsWith('..')) return false;
@@ -187,6 +195,7 @@ export class FileWatcher {
   }
 
   async close(): Promise<void> {
+    this.closed = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     await this.watcher?.close().catch(() => {});
@@ -239,11 +248,14 @@ export async function resolveInside(root: string, rel: string): Promise<string> 
   if (typeof rel !== 'string' || !rel.trim()) throw new Error('A file path is required.');
   const abs = resolve(root, rel);
   if (!isInside(root, abs)) throw new Error(`"${rel}" is outside the project.`);
-  // Follow symlinks for the deepest existing ancestor and check again.
+  // Follow symlinks for the deepest existing entry (lstat: a dangling link
+  // counts as existing) and check again. A link that points nowhere is refused,
+  // or a write would create its target wherever it points.
   const realRoot = await realpath(root).catch(() => root);
   let probe = abs;
-  while (!existsSync(probe) && probe !== root) probe = dirname(probe);
-  const realProbe = await realpath(probe).catch(() => probe);
+  while (probe !== root && !(await lstat(probe).then(() => true, () => false))) probe = dirname(probe);
+  const realProbe = await realpath(probe).catch(() => null);
+  if (realProbe === null) throw new Error(`"${rel}" goes through a link that points nowhere.`);
   if (realProbe !== realRoot && !isInside(realRoot, realProbe)) throw new Error(`"${rel}" is outside the project.`);
   return abs;
 }

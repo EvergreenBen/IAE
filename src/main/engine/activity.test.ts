@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeToolUse, projectPath, shortCommand } from './activity';
+import { describeToolUse, humanCommand, projectPath, shortCommand } from './activity';
 
 const ROOT = '/work/recipe-box';
 const exists = (abs: string) => abs.endsWith('existing.ts');
@@ -27,11 +27,26 @@ describe('describeToolUse', () => {
   });
 
   it('describes commands and searches in a few words', () => {
-    expect(describeToolUse(ROOT, 'Bash', { command: `cd "${ROOT}" && npm test` }).activity).toBe('Running npm test');
+    expect(describeToolUse(ROOT, 'Bash', { command: `cd "${ROOT}" && npm test` }).activity).toBe('Running tests');
     expect(describeToolUse(ROOT, 'Grep', { pattern: 'session' }).activity).toBe("Searching for 'session'");
     expect(describeToolUse(ROOT, 'Glob', { pattern: '**/*.sql' })).toMatchObject({ kind: 'search', activity: 'Looking for **/*.sql' });
     expect(describeToolUse(ROOT, 'mcp__iae__map_update', {}).activity).toBe('Updating the map');
     expect(describeToolUse(ROOT, 'mcp__linear__create_issue', {}).activity).toBe('Using linear create issue');
+  });
+});
+
+describe('humanCommand', () => {
+  it('says what a command is for, naming a chain by its most telling step', () => {
+    expect(humanCommand('ls -la && ls -la .iae && node -v && pnpm install')).toBe('Installing packages');
+    expect(humanCommand('cd apps/api && npx tsc --noEmit 2>&1 | tail -20')).toBe('Typechecking');
+    expect(humanCommand('CI=1 pnpm run test -- --run')).toBe('Running tests');
+    expect(humanCommand('npm run build')).toBe('Building');
+    expect(humanCommand('git status && git diff --stat')).toBe('Reviewing changes');
+    expect(humanCommand('npx prisma migrate dev --name init')).toBe('Running migrations');
+    expect(humanCommand('open -a Docker')).toBe('Using Docker');
+    expect(humanCommand('ls -la apps')).toBe('Checking the project');
+    expect(humanCommand(`node ${ROOT}/scripts/seed-database-with-example-recipes.mjs`, ROOT)).toBe('Running node seed-database-with-example…');
+    expect(humanCommand('')).toBe('Running a command');
   });
 });
 

@@ -46,7 +46,8 @@ export class ProjectSession {
         return { id: a.id, name: a.name, queued: this.crew.isQueued(a.id) };
       },
       messageAgent: (id, message) => this.crew.message(id, message),
-      stopAgent: (id) => this.stopAgent(id),
+      stopAgent: (id) => this.stopAgent(id, 'lead'),
+      hasSpoken: () => this.lead.hasSpoken,
     };
     this.lead = new Lead({
       ws,
@@ -55,10 +56,12 @@ export class ProjectSession {
       makeTools: () => createLeadTools(host),
       crewLines: () => this.crewLines(),
       agentName: (id) => (id === ATLAS_ID ? 'Atlas' : this.crew.nameOf(id)),
+      slots: () => this.crew.slotsNote(),
       onClaudeStatus: d.onClaudeStatus,
+      onTurnEnd: (kind) => this.pulse.turnEnded(kind),
     });
     this.sketcher = new Sketcher({ root: ws.root, emit, settings: d.settings, map: () => ws.map });
-    this.pulse = new Pulse({ ws, lead: this.lead });
+    this.pulse = new Pulse({ ws, lead: this.lead, working: () => this.crew.visible().map((a) => ({ id: a.id, name: a.name })) });
   }
 
   static async open(root: string, d: SessionDeps): Promise<ProjectSession> {
@@ -82,11 +85,11 @@ export class ProjectSession {
     this.lead.warm();
     this.sketcher.warm();
     this.pulse.start();
-    const empty = ws.files.length === 0 || (ws.info.isNew && Object.keys(ws.map.nodes).length === 0);
+    const empty = Object.keys(ws.map.nodes).length === 0;
     if (!ws.state.cartographedAt && !ws.state.isNew && ws.files.length > 0) this.startCartographer();
-    if (empty) this.lead.send('events', 'project opened: new, empty. Invite the idea in one warm sentence.');
-    else if (this.cartographer) this.lead.send('events', 'project opened for the first time. Atlas (the cartographer) is reading the code now; the map is a rough first draft from folder names and will sharpen.');
-    else this.lead.send('events', 'project reopened. Greet briefly and point at the most useful next step.');
+    if (this.cartographer) this.lead.send('events', 'project opened for the first time. Atlas (the cartographer) is reading the code now; the map is a rough first draft from folder names and will sharpen.');
+    else if (empty) this.lead.send('events', 'project opened: new, empty. Invite the idea in one warm sentence.');
+    else this.lead.send('events', 'project reopened. In one or two sentences, pick up where you left off: what is built or in flight, and the one decision that matters next.');
   }
 
   private startCartographer(): void {
@@ -128,8 +131,12 @@ export class ProjectSession {
     if (!clean) return;
     this.userActive();
     this.ws.appendTranscript('user', clean, this.ws.view.selectedNodeId);
-    const item = meta?.agendaId ? this.resolve(meta.agendaId, clean) : null;
-    this.lead.send('user', item ? `(answering [${item.id}] "${item.prompt}") ${clean}` : clean);
+    // The renderer's guess that this answers the card on screen is only a hint:
+    // the lead decides (resolve_question), so "show me the backend" said while a
+    // Postgres-vs-Redis card is up doesn't become a decision. Taps answer directly.
+    const card = meta?.agendaId ? this.ws.agenda.get(meta.agendaId) : undefined;
+    const hint = card?.status === 'open' ? `(said while the card [${card.id}] "${card.prompt}" was on screen; if it answers it, resolve_question) ` : '';
+    this.lead.send('user', `${hint}${clean}`);
   }
 
   draft(draftId: string, text: string): void {
@@ -137,20 +144,21 @@ export class ProjectSession {
     this.sketcher.draft(draftId, text);
   }
 
-  /** Closes a question; non-blocking answers are forwarded to the builder that asked. */
-  private resolve(id: string, answer: string): AgendaItem | null {
+  /** Closes a question; the builders that asked get the answer. */
+  private resolve(id: string, answer: string): { item: AgendaItem; told: string[] } | null {
     const item = this.ws.agenda.answer(id, answer.trim());
-    if (item) this.crew.answered(item);
-    return item;
+    return item ? { item, told: this.crew.answered(item) } : null;
   }
 
   /** The person tapped an option on a question card. */
   answer(id: string, answer: string): void {
-    const item = this.resolve(id, answer);
-    if (!item) return;
+    const r = this.resolve(id, answer);
+    if (!r) return;
+    const { item, told } = r;
     this.userActive();
     this.ws.appendTranscript('user', answer, item.nodeId);
-    this.lead.send('user', `(answered [${item.id}] "${item.prompt}" on its card) ${answer}`);
+    const relayed = told.length ? `; ${told.join(' and ')} already got the answer` : '';
+    this.lead.send('user', `(tapped an answer on the card [${item.id}] "${item.prompt}" — it's closed${relayed}; record the choice with decide and act on it) ${answer}`);
   }
 
   dismiss(id: string): void {
@@ -179,12 +187,12 @@ export class ProjectSession {
 
   // ── agents & commands ──────────────────────────────────────────────────────
 
-  async stopAgent(id: string): Promise<string> {
+  async stopAgent(id: string, by: 'person' | 'lead' = 'person'): Promise<string> {
     if (id === ATLAS_ID && this.cartographer?.running) {
       await this.cartographer.stop();
       return 'Stopped Atlas.';
     }
-    return this.crew.stop(id);
+    return this.crew.stop(id, by);
   }
 
   runCommand(command: string): void {
@@ -232,8 +240,10 @@ export class ProjectSession {
 
   settingsChanged(prev: Settings, next: Settings): void {
     if (prev.leadModel !== next.leadModel || prev.leadEffort !== next.leadEffort || prev.leadName !== next.leadName || prev.maxBuilders !== next.maxBuilders) {
-      this.lead.refresh();
+      const renamed = prev.leadName !== next.leadName && next.leadName.trim();
+      this.lead.refresh(renamed ? `your name is now ${next.leadName} (it was ${prev.leadName}); use the new name from now on.` : undefined);
     }
+    if (next.maxBuilders > prev.maxBuilders) this.crew.kick();
   }
 
   async close(): Promise<void> {

@@ -5,7 +5,7 @@
 //   node scripts/smoke-engine.mjs                 # new project: lead, sketcher, pulse, a tiny builder
 //   node scripts/smoke-engine.mjs --existing DIR  # also open a copy of DIR (heuristic map + cartographer)
 //   node scripts/smoke-engine.mjs --skip-build    # skip the builder step (cheaper)
-//   node scripts/smoke-engine.mjs --skip-pulse    # skip the ~25s pulse wait
+//   node scripts/smoke-engine.mjs --skip-pulse    # skip the ~30s quiet-pulse check
 //
 // The engine is bundled with esbuild (dependencies stay external) into
 // out/smoke/engine.mjs so it runs without Electron.
@@ -180,10 +180,12 @@ try {
   await new Promise((r) => setTimeout(r, 1500));
 
   if (!flag('--skip-pulse')) {
+    // Nothing new since the lead last spoke (its own question is on the map as a
+    // card): the pulse must not ask it to repeat itself.
     mark('quiet (pulse)');
-    const pulseTurn = waitFor((e) => e.type === 'lead/done', 45_000);
+    const pulseTurn = waitFor((e) => e.type === 'lead/done', 30_000);
     const p = await pulseTurn;
-    check(!!p, `pulse nudged the lead → ${p ? (p.text ? `"${p.text}"` : '(silence)') : 'no turn'}`);
+    check(!p, `pulse stays quiet when nothing is new${p ? ` (but the lead said: "${p.text || '(silence)'}")` : ''}`);
   }
 
   mark('barge-in');

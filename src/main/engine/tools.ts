@@ -6,6 +6,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { EngineEvent } from '../../shared/events';
 import type { AgendaItem, AgendaKind, NodeStatus } from '../../shared/model';
+import { anchorNode } from './agenda';
 import { describeResult, normalizeOps, opInput } from './mapops';
 import { errorText, log } from './sdk';
 import type { Workspace } from './workspace';
@@ -32,13 +33,20 @@ export interface DelegateInput {
 export interface LeadToolHost {
   ws: Workspace;
   emit: (e: EngineEvent) => void;
-  answer(id: string, answer: string): AgendaItem | null;
+  /** Resolves a question; `told` names the builders that now have the answer. */
+  answer(id: string, answer: string): { item: AgendaItem; told: string[] } | null;
   delegate(input: DelegateInput): { id: string; name: string; queued: boolean };
   messageAgent(agentId: string, message: string): string;
   stopAgent(agentId: string): Promise<string>;
+  /** The lead already spoke this turn: results remind it to end without more text. */
+  hasSpoken?: () => boolean;
 }
 
+/** Appended to tool results once the turn's sentence is out (text after tools isn't spoken). */
+export const END_HINT = '\n(You already spoke this turn; nothing after your tools is heard. When your tool calls are done, end the turn by replying exactly <silence/>.)';
+
 export const ok = (text: string): CallToolResult => ({ content: [{ type: 'text', text }] });
+const okResult = ok;
 export const fail = (text: string): CallToolResult => ({ content: [{ type: 'text', text }], isError: true });
 
 /** Runs a handler, turning any throw into an error result the model can read. */
@@ -64,6 +72,9 @@ export function statusForPaths(ws: Workspace, paths: string[] | undefined): Node
 
 export function createLeadTools(host: LeadToolHost): McpSdkServerConfigWithInstance {
   const { ws } = host;
+  // Results end with a reminder once the sentence is out: the model otherwise
+  // tends to write its reply a second time after the tools (unspoken, slow).
+  const ok = (text: string): CallToolResult => okResult(host.hasSpoken?.() ? text + END_HINT : text);
   const nodeOrNull = (id: string | null | undefined): { id: string | null; note: string } => {
     if (!id) return { id: null, note: '' };
     if (ws.map.nodes[id]) return { id, note: '' };
@@ -89,7 +100,7 @@ export function createLeadTools(host: LeadToolHost): McpSdkServerConfigWithInsta
       ),
       tool(
         'focus',
-        'Move the person\'s camera to a node: "show" frames it, "enter" dives inside it. node_id null returns to the top level.',
+        'Move the person\'s camera to a node: "show" frames it, "enter" dives inside it (its children and files show). Use it whenever you point at a node or a file. node_id null returns to the top level.',
         {
           node_id: z.string().nullable().describe('Node id, or null for the top level.'),
           mode: z.string().optional().describe('"show" (default) or "enter".'),
@@ -111,7 +122,7 @@ export function createLeadTools(host: LeadToolHost): McpSdkServerConfigWithInsta
           kind: z.string().optional().describe('decision | idea | risk | clarify (default decision).'),
           why: z.string().optional().describe('One line: why it matters now.'),
           options: z.array(z.string()).optional().describe('2–4 one-tap answers, recommended first.'),
-          node_id: z.string().optional().describe('Node it is about.'),
+          node_id: z.string().optional().describe('Node it is about, at the level the person is looking at (a deep node is shown on its visible ancestor).'),
           priority: z.number().optional().describe('0..1, the cost of getting it wrong (default 0.5).'),
         },
         (args) =>
@@ -119,20 +130,23 @@ export function createLeadTools(host: LeadToolHost): McpSdkServerConfigWithInsta
             if (!args.prompt?.trim()) return fail('prompt is required.');
             const node = nodeOrNull(args.node_id);
             const kind = AGENDA_KINDS.includes(args.kind as AgendaKind) ? (args.kind as AgendaKind) : 'decision';
-            const item = ws.agenda.ask({ prompt: args.prompt, kind, why: args.why, options: args.options, nodeId: node.id, priority: args.priority });
+            const nodeId = anchorNode(ws.map, node.id, ws.view.scopeId);
+            const item = ws.agenda.ask({ prompt: args.prompt, kind, why: args.why, options: args.options, nodeId, priority: args.priority });
             const still = ws.agenda.get(item.id)?.status === 'open';
-            return ok(still ? `Asked [${item.id}]${node.note}.` : `[${item.id}] was pruned: five higher-priority questions are already open. Drop one first if this matters more.`);
+            const moved = nodeId && nodeId !== node.id ? ` (shown on ${nodeId}, where the person is looking)` : '';
+            return ok(still ? `Asked [${item.id}]${node.note}${moved}.` : `[${item.id}] was pruned: five higher-priority questions are already open. Drop one first if this matters more.`);
           }),
       ),
       tool(
         'resolve_question',
-        'Close an open question with the person\'s answer (even one given in passing). Builders waiting on it continue; answered decisions are recorded automatically.',
+        'Close an open question with the person\'s answer (even one given in passing). Builders who asked it get the answer directly. Record the choice itself once with decide, in your own words.',
         { id: z.string(), answer: z.string().describe('The answer, in a few words.') },
         (args) =>
           guard('resolve_question', () => {
-            const item = host.answer(args.id, args.answer);
-            if (!item) return fail(`No open question "${args.id}".`);
-            return ok(`Resolved [${item.id}]${item.blocking?.length ? `; ${item.blocking.length} builder(s) unblocked` : ''}.`);
+            const r = host.answer(args.id, args.answer);
+            if (!r) return fail(`No open question "${args.id}" (already answered or dropped).`);
+            const told = r.told.length ? `; ${r.told.join(' and ')} got the answer directly, so don't relay it` : '';
+            return ok(`Resolved [${r.item.id}]${told}.`);
           }),
       ),
       tool(

@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { emptyMap } from '../../shared/map';
+import { emptyMap, projectFolderName } from '../../shared/map';
 import {
   DEFAULT_SETTINGS,
   type AgendaItem,
@@ -44,12 +44,24 @@ const DEBOUNCE_MS = 400;
 const TRANSCRIPT_TAIL = 60;
 
 async function readJson<T>(file: string, fallback: T): Promise<T> {
+  let text: string;
   try {
-    return JSON.parse(await readFile(file, 'utf8')) as T;
+    text = await readFile(file, 'utf8');
   } catch {
     return fallback;
   }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // Unreadable (a merge conflict, a torn write): keep a copy before IAE writes a fresh one over it.
+    await writeFile(`${file}.${Date.now()}.bak`, text).catch(() => {});
+    console.warn(`[iae:store] ${file} couldn't be parsed; kept a .bak copy and started fresh`);
+    return fallback;
+  }
 }
+
+const isMap = (m: unknown): m is ArchMap =>
+  !!m && typeof m === 'object' && typeof (m as ArchMap).nodes === 'object' && typeof (m as ArchMap).edges === 'object';
 
 async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
   const tmp = `${file}.${process.pid}.tmp`;
@@ -104,10 +116,11 @@ export class ProjectStore {
     const gitignore = this.file('.gitignore');
     // Session ids and the raw transcript are personal; the map, agenda and decisions are worth sharing.
     if (!existsSync(gitignore)) await writeFile(gitignore, 'transcript.jsonl\nstate.json\n*.tmp\n').catch(() => {});
-    const hadMap = existsSync(this.file('map.json'));
-    const map = await readJson<ArchMap>(this.file('map.json'), emptyMap());
+    const map = existsSync(this.file('map.json')) ? await readJson<ArchMap | null>(this.file('map.json'), null) : null;
+    // A map that couldn't be read counts as no map: the project gets redrawn rather than opening blank.
+    const hadMap = isMap(map);
     return {
-      map: map && map.nodes && map.edges ? map : emptyMap(),
+      map: hadMap ? map : emptyMap(),
       hadMap,
       agenda: await readJson<AgendaItem[]>(this.file('agenda.json'), []),
       decisions: await readJson<Decision[]>(this.file('decisions.json'), []),
@@ -223,16 +236,6 @@ export function defaultProjectsDir(homeDir: string): string {
   return join(homeDir, 'IAE Projects');
 }
 
-function cleanName(name: string): string {
-  const cleaned = name
-    .replace(/[/\\:*?"<>|\u0000-\u001f]/g, ' ')
-    .replace(/^\.+/, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 80);
-  return cleaned || 'Untitled';
-}
-
 async function isEmptyDir(dir: string): Promise<boolean> {
   try {
     const entries = await readdir(dir);
@@ -244,7 +247,7 @@ async function isEmptyDir(dir: string): Promise<boolean> {
 
 /** Creates `<parent>/<Name>` (or `<Name 2>` if taken), and runs `git init` quietly. */
 export async function createProjectFolder(name: string, parentDir: string): Promise<string> {
-  const base = cleanName(name);
+  const base = projectFolderName(name);
   await mkdir(parentDir, { recursive: true });
   let dir = join(parentDir, base);
   for (let i = 2; existsSync(dir) && !(await isEmptyDir(dir)); i++) dir = join(parentDir, `${base} ${i}`);

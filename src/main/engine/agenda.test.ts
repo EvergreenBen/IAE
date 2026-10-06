@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AgendaItem, Decision } from '../../shared/model';
-import { Agenda, MAX_OPEN, type AgendaSink } from './agenda';
+import { applyOps, emptyMap } from '../../shared/map';
+import { Agenda, anchorNode, MAX_OPEN, type AgendaSink } from './agenda';
 
 function setup(items: AgendaItem[] = []) {
   const events: string[] = [];
@@ -13,6 +14,28 @@ function setup(items: AgendaItem[] = []) {
   };
   return { agenda: new Agenda(items, [], sink), events, decisions };
 }
+
+describe('anchorNode', () => {
+  const map = applyOps(emptyMap(), [
+    { op: 'upsertNode', node: { id: 'api', parentId: null } },
+    { op: 'upsertNode', node: { id: 'api-auth', parentId: 'api' } },
+    { op: 'upsertNode', node: { id: 'api-auth-oauth', parentId: 'api-auth' } },
+    { op: 'upsertNode', node: { id: 'web', parentId: null } },
+    { op: 'upsertNode', node: { id: 'web-pages', parentId: 'web' } },
+  ]);
+  it('lifts a deep node to what is visible where the person is looking', () => {
+    expect(anchorNode(map, 'api-auth-oauth', null)).toBe('api');
+    expect(anchorNode(map, 'api-auth-oauth', 'api')).toBe('api-auth');
+    expect(anchorNode(map, 'api-auth-oauth', 'api-auth')).toBe('api-auth-oauth');
+    expect(anchorNode(map, 'api', 'api')).toBe('api');
+  });
+  it('outside the current scope, sits no deeper than a top-level node’s child', () => {
+    expect(anchorNode(map, 'api-auth-oauth', 'web')).toBe('api-auth');
+    expect(anchorNode(map, 'web-pages', 'api')).toBe('web-pages');
+    expect(anchorNode(map, 'nope', null)).toBeNull();
+    expect(anchorNode(map, null, null)).toBeNull();
+  });
+});
 
 describe('Agenda', () => {
   it('orders blocking items first, then by priority, then by age', () => {
@@ -40,15 +63,14 @@ describe('Agenda', () => {
     expect(events).toContain(`remove ${items[4].id}`);
   });
 
-  it('records answered decisions and closes the item', () => {
+  it('closes answered items without recording a decision (the lead records it once, in its words)', () => {
     const { agenda, decisions } = setup();
     const q = agenda.ask({ prompt: 'Cookie sessions or tokens?', kind: 'decision', nodeId: 'api-auth' });
-    const idea = agenda.ask({ prompt: 'Add search?', kind: 'idea' });
-    expect(agenda.answer(q.id, 'Tokens')?.status).toBe('answered');
-    agenda.answer(idea.id, 'Later');
-    expect(decisions).toHaveLength(1);
-    expect(decisions[0]).toMatchObject({ title: 'Tokens', rationale: 'Cookie sessions or tokens?', nodeId: 'api-auth' });
+    expect(agenda.answer(q.id, 'Tokens')).toMatchObject({ status: 'answered', answer: 'Tokens' });
+    expect(decisions).toHaveLength(0);
     expect(agenda.answer(q.id, 'again')).toBeNull();
+    agenda.decide({ title: 'Sessions use tokens', rationale: 'Mobile clients', nodeId: 'api-auth' });
+    expect(decisions).toHaveLength(1);
   });
 
   it('resolves waiters on answer, dismissal and timeout', async () => {
@@ -65,6 +87,22 @@ describe('Agenda', () => {
     expect(await wb).toBeNull();
     expect(await wc).toBeNull();
     expect(await agenda.waitFor(a.id, 10)).toBe('yes');
+  });
+
+  it('a timed-out waiter leaves no listener behind, and the builder can stop blocking', async () => {
+    vi.useFakeTimers();
+    const { agenda } = setup();
+    const item = agenda.ask({ prompt: 'sha?', blocking: ['ada'] });
+    const abort = new AbortController();
+    const remove = vi.spyOn(abort.signal, 'removeEventListener');
+    const p = agenda.waitFor(item.id, 1000, abort.signal);
+    vi.advanceTimersByTime(1000);
+    expect(await p).toBeNull();
+    expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+    agenda.removeBlocker(item.id, 'ada');
+    expect(agenda.get(item.id)?.blocking).toEqual([]);
+    expect(agenda.get(item.id)?.status).toBe('open');
+    vi.useRealTimers();
   });
 
   it('releases an agent from items it was blocking', () => {

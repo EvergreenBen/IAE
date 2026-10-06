@@ -111,12 +111,21 @@ export class Engine implements IaeApi {
     // Canonical path: Claude Code reports real paths (macOS /var → /private/var), and
     // file ownership on the map depends on matching them.
     const root = await realpath(resolve(rootIn)).catch(() => resolve(rootIn));
+    const hadProject = !!this.project;
     await this.closeCurrent();
-    const session = await ProjectSession.open(root, {
-      emit: this.emit,
-      settings: () => this.settings,
-      onClaudeStatus: this.onClaudeStatus,
-    });
+    let session: ProjectSession;
+    try {
+      session = await ProjectSession.open(root, {
+        emit: this.emit,
+        settings: () => this.settings,
+        onClaudeStatus: this.onClaudeStatus,
+      });
+    } catch (e) {
+      // The previous project is already closed: don't leave the window on it.
+      if (hadProject) this.emit({ type: 'project/closed' });
+      this.emit({ type: 'notice', level: 'error', text: `Couldn't open ${root}: ${errorText(e)}` });
+      throw e;
+    }
     this.project = session;
     const snapshot = session.snapshot();
     this.emit({ type: 'project/opened', snapshot });
@@ -131,11 +140,15 @@ export class Engine implements IaeApi {
     return this.openProject(dir);
   }
 
-  async closeProject(): Promise<void> {
-    await this.switching;
-    if (!this.project) return;
-    await this.closeCurrent();
-    this.emit({ type: 'project/closed' });
+  /** Serialized with openProject, so a close can't land in the middle of an open. */
+  closeProject(): Promise<void> {
+    const next = this.switching.then(async () => {
+      if (!this.project) return;
+      await this.closeCurrent();
+      this.emit({ type: 'project/closed' });
+    });
+    this.switching = next.catch(() => {});
+    return next;
   }
 
   private async closeCurrent(): Promise<void> {

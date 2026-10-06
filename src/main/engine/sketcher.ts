@@ -48,9 +48,11 @@ export function parseProposals(raw: string, map: ArchMap): GhostProposal[] {
   return out.slice(0, 4);
 }
 
+/** The map as the sketcher sees it: ids, labels and the gist of each summary (to spot overlap). */
 export function compactMap(map: ArchMap, max = 60): string {
   const nodes = Object.values(map.nodes).slice(0, max);
-  return nodes.length ? nodes.map((n) => `${n.id} (${n.label})`).join(', ') : '(none yet)';
+  const gist = (s: string) => (s.length > 64 ? `${s.slice(0, 63)}…` : s);
+  return nodes.length ? nodes.map((n) => `${n.id} (${n.label}${n.summary ? `: ${gist(n.summary)}` : ''})`).join(', ') : '(none yet)';
 }
 
 interface Draft {
@@ -62,6 +64,8 @@ interface Session {
   q: Query;
   input: InputQueue;
   waiting: ((text: string | null) => void) | null;
+  /** Dropped (failed or recycled): its stream ending later isn't another failure. */
+  dead: boolean;
 }
 
 export interface SketcherDeps {
@@ -77,6 +81,8 @@ export class Sketcher {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private session: Session | null = null;
   private used = 0;
+  /** The map text this session last saw; unchanged maps aren't re-sent. */
+  private sentMap = '';
   private failures = 0;
   private pausedUntil = 0;
   private closed = false;
@@ -106,7 +112,10 @@ export class Sketcher {
     const session = this.session;
     this.inFlight = draft;
     this.used++;
-    const reply = await this.ask(session, `Existing nodes: ${compactMap(this.d.map())}\nSentence so far: "${draft.text}"`);
+    const mapText = compactMap(this.d.map());
+    const nodes = mapText === this.sentMap ? 'Existing nodes: (same as before)' : `Existing nodes: ${mapText}`;
+    this.sentMap = mapText;
+    const reply = await this.ask(session, `${nodes}\nSentence so far: "${draft.text}"`);
     this.inFlight = null;
     if (this.closed) return;
     const latest = this.latest;
@@ -148,8 +157,9 @@ export class Sketcher {
         permissionMode: 'dontAsk',
       },
     });
-    const session: Session = { q, input, waiting: null };
+    const session: Session = { q, input, waiting: null, dead: false };
     this.used = 0;
+    this.sentMap = '';
     void this.consume(session);
     return session;
   }
@@ -174,6 +184,7 @@ export class Sketcher {
   }
 
   private fail(session: Session, why: string): void {
+    if (session.dead) return;
     log('sketch', 'failed:', why);
     this.dropSession(session);
     if (++this.failures >= MAX_FAILURES) {
@@ -183,6 +194,7 @@ export class Sketcher {
   }
 
   private dropSession(session: Session): void {
+    session.dead = true;
     session.input.close();
     try {
       session.q.close();

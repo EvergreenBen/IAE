@@ -22,6 +22,7 @@ import { FileWatcher, hasNoCode, scanFiles, type ScannedFile } from '../project/
 import { buildHeuristicMap } from '../project/heuristic';
 import { ProjectStore, projectName, type Notes, type ProjectState } from '../project/store';
 import { Agenda } from './agenda';
+import type { MapLogEntry } from './mapdiff';
 import { log } from './sdk';
 
 export interface LeadEvent {
@@ -32,6 +33,7 @@ export interface LeadEvent {
 }
 
 const MAX_EVENTS = 30;
+const MAX_MAP_LOG = 400;
 
 export class Workspace {
   readonly store: ProjectStore;
@@ -49,8 +51,12 @@ export class Workspace {
   lastUserActivityAt = Date.now();
   /** Bumped on every map change; the lead re-sends the map when it moved. */
   mapVersion = 1;
+  /** Recent map changes with who made them (the lead hears others' changes as a diff). */
+  readonly mapLog: MapLogEntry[] = [];
 
   private scanned: ScannedFile[];
+  /** Builders at work per node, the status to fall back to, and the latest outcome. */
+  private builds = new Map<string, { count: number; prev: NodeStatus; last: 'done' | 'failed' | null }>();
   private filesCache: FileEntry[] | null = null;
   private filesSignature = '';
   private events: LeadEvent[] = [];
@@ -131,9 +137,35 @@ export class Workspace {
     if (next === this.map) return;
     this.map = next;
     this.mapVersion++;
+    this.mapLog.push({ version: this.mapVersion, at: Date.now(), source, ops });
+    if (this.mapLog.length > MAX_MAP_LOG) this.mapLog.splice(0, this.mapLog.length - MAX_MAP_LOG);
     if (ops.some((o) => o.op !== 'upsertEdge' && o.op !== 'removeEdge')) this.filesCache = null;
     this.emit({ type: 'map/ops', ops, source });
     this.store.saveMap(this.map);
+  }
+
+  /** A builder started on a node: it shows as building until the last one ends. */
+  beginBuild(nodeId: string | null | undefined): void {
+    if (!nodeId || !this.map.nodes[nodeId]) return;
+    const b = this.builds.get(nodeId) ?? { count: 0, prev: this.map.nodes[nodeId].status, last: null };
+    b.count++;
+    this.builds.set(nodeId, b);
+    this.setNodeStatus(nodeId, 'building');
+  }
+
+  /**
+   * A builder on the node ended. When it was the last one, the node becomes
+   * built (if any finished), broken (if the latest one that ran to the end
+   * failed), or goes back to how it was (all were stopped).
+   */
+  endBuild(nodeId: string | null | undefined, outcome: 'done' | 'failed' | 'stopped'): void {
+    const b = nodeId ? this.builds.get(nodeId) : undefined;
+    if (!nodeId || !b) return;
+    if (outcome !== 'stopped') b.last = outcome;
+    if (--b.count > 0) return;
+    this.builds.delete(nodeId);
+    const prev = b.prev === 'building' ? 'planned' : b.prev;
+    this.setNodeStatus(nodeId, b.last === 'done' ? 'built' : b.last === 'failed' ? 'broken' : prev);
   }
 
   setNodeStatus(nodeId: string | null | undefined, status: NodeStatus, source: OpSource = 'builder'): void {
@@ -181,6 +213,8 @@ export class Workspace {
 
   /** Merges one-line file meanings. Existing notes are kept unless `overwrite`. */
   addNotes(entries: { path: string; note: string }[], overwrite = true): number {
+    // A late explanation for a project that has since closed must not leak into the next one.
+    if (this.closed) return 0;
     let n = 0;
     for (const { path, note } of entries) {
       const clean = note.replace(/\s+/g, ' ').trim().slice(0, 200);
@@ -216,6 +250,7 @@ export class Workspace {
 
   appendTranscript(who: TranscriptEntry['who'], text: string, nodeId?: string | null): TranscriptEntry {
     const entry: TranscriptEntry = { id: `t-${nanoid(8)}`, at: Date.now(), who, text, ...(nodeId ? { nodeId } : {}) };
+    if (this.closed) return entry;
     this.transcript.push(entry);
     if (this.transcript.length > 200) this.transcript.splice(0, this.transcript.length - 200);
     this.store.appendTranscript(entry);
@@ -224,6 +259,7 @@ export class Workspace {
   }
 
   saveState(patch: Partial<ProjectState>): void {
+    if (this.closed) return;
     this.state = { ...this.state, ...patch };
     if (patch.summary) this.info = { ...this.info, summary: patch.summary };
     this.store.saveState(this.state);

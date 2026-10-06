@@ -5,9 +5,10 @@
 import { query, type CanUseTool, type PermissionResult, type PermissionUpdate, type Query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { EngineEvent } from '../../shared/events';
 import { describeMap, ownerOf } from '../../shared/map';
-import type { AgendaItem, AgentInfo, Autonomy, NodeStatus, Settings } from '../../shared/model';
+import type { AgendaItem, AgentInfo, Autonomy, Settings } from '../../shared/model';
 import { describeToolUse, stepText } from './activity';
 import { createCrewTools, crewToolNames } from './crew-tools';
+import { gateHooks } from './gate';
 import { builderAppend } from './prompts';
 import { baseOptions, errorText, InputQueue, log } from './sdk';
 import type { Workspace } from './workspace';
@@ -53,7 +54,10 @@ export class BuilderRun {
   private stopped = false;
   private finished = false;
   private lastText = '';
-  private prevNodeStatus: NodeStatus | null = null;
+  /** The node this run marked as building (released when it ends). */
+  private buildingNode: string | null = null;
+  /** Files this run created (they get one-line notes when it ends). */
+  readonly created = new Set<string>();
 
   constructor(
     readonly job: JobSpec,
@@ -79,9 +83,11 @@ export class BuilderRun {
   start(): void {
     const { ws, settings } = this.d;
     const node = this.job.nodeId ? ws.map.nodes[this.job.nodeId] : undefined;
-    if (node && this.job.kind !== 'investigate') {
-      this.prevNodeStatus = node.status;
-      ws.setNodeStatus(node.id, 'building');
+    // Builds mark their node; scouts and slash commands (which run wherever the
+    // person happened to be looking) don't.
+    if (node && this.job.kind === 'build') {
+      this.buildingNode = node.id;
+      ws.beginBuild(node.id);
     }
     const decisions = ws.agenda.allDecisions().slice(-20).map((d) => (d.rationale ? `${d.title} (${d.rationale})` : d.title));
     const append = builderAppend({
@@ -101,11 +107,11 @@ export class BuilderRun {
       allowedOps: ['upsertNode', 'upsertEdge'],
       signal: this.abort.signal,
       canAsk: true,
-      canNote: false,
+      canNote: !this.isScout,
       onAsked: (item, blocking) => this.d.onAsked(this, item, blocking),
       onWaiting: (waiting) => this.update(waiting ? { status: 'waiting', activity: 'Waiting for your answer' } : { status: 'working', activity: 'Back at work' }),
     });
-    const ownTools = crewToolNames({ canAsk: true, canNote: false });
+    const ownTools = crewToolNames({ canAsk: true, canNote: !this.isScout });
 
     this.q = query({
       prompt: this.input,
@@ -119,7 +125,10 @@ export class BuilderRun {
         includePartialMessages: false,
         ...(this.isScout
           ? { tools: SCOUT_TOOLS, allowedTools: [...SCOUT_TOOLS, ...ownTools], permissionMode: 'dontAsk' as const, strictMcpConfig: true }
-          : permissionOptions(settings.autonomy, this.canUseTool, ownTools)),
+          : {
+              ...permissionOptions(settings.autonomy, this.canUseTool, ownTools),
+              hooks: { PreToolUse: gateHooks(settings.autonomy, (toolName, input, signal) => this.d.askPermission(this, { toolName, input, signal })) },
+            }),
       },
     });
     this.input.push(this.firstMessage());
@@ -191,6 +200,7 @@ export class BuilderRun {
           const act = describeToolUse(ws.root, block.name, input);
           emit({ type: 'agent/step', agentId: this.agent.id, step: { at: Date.now(), kind: act.kind, text: act.activity, ...(act.path ? { path: act.path } : {}) } });
           if (act.path && act.touch) emit({ type: 'files/touched', path: act.path, agentId: this.agent.id, action: act.touch });
+          if (act.path && act.touch === 'create') this.created.add(act.path);
           const nodeId = (act.path ? ownerOf(ws.map, act.path) : null) ?? this.agent.nodeId;
           if (this.agent.status !== 'waiting') this.update({ status: 'working', activity: act.activity, file: act.path, nodeId });
         }
@@ -215,13 +225,8 @@ export class BuilderRun {
     // A finished session exits on its own once its input closes (so the person's hooks still run).
     this.finished = true;
     this.input.close();
-    const { ws } = this.d;
-    const nodeId = this.job.nodeId;
-    if (nodeId && this.prevNodeStatus) {
-      if (outcome.status === 'done') ws.setNodeStatus(nodeId, 'built');
-      else if (outcome.status === 'failed') ws.setNodeStatus(nodeId, 'broken');
-      else ws.setNodeStatus(nodeId, this.prevNodeStatus);
-    }
+    if (this.buildingNode) this.d.ws.endBuild(this.buildingNode, outcome.status);
+    this.buildingNode = null;
     this.d.onFinished(this, outcome);
   }
 }
