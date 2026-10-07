@@ -13,6 +13,7 @@ the map where it is working.
 
 Read these before making product or design decisions:
 
+- `docs/GUIDE.md`: the user guide — every feature and how it is meant to be used
 - `docs/PRD.md`: the original PRD and how IAE departs from it
 - `docs/DESIGN.md`: visual language, interaction model, motion, copy
 - `docs/CONVERSATION.md`: how the lead thinks, talks, asks and never idles

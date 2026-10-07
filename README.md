@@ -41,6 +41,7 @@ monorepo. Then follow [`docs/DEMO.md`](docs/DEMO.md).
 
 ## Learn more
 
+- [`docs/GUIDE.md`](docs/GUIDE.md): everything IAE can do, and how to use it
 - [`docs/DEMO.md`](docs/DEMO.md): a five-minute demo
 - [`CLAUDE.md`](CLAUDE.md): working on IAE
 - [`docs/PRD.md`](docs/PRD.md): the brief and how IAE adapts it
