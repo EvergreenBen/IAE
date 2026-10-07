@@ -49,7 +49,7 @@ const WARM_MS = 20_000; // keep the mic open this long after push-to-talk
 const PREWARM_AFTER_MS = 2500; // after a project opens, before loading the model in the background
 const USED_KEY = 'iae.voice.used';
 
-/** Remember that this person talks to IAE, so later launches load the model early. */
+/** Remember that this person talks to Arxitect, so later launches load the model early. */
 function markVoiceUsed(): void {
   try {
     localStorage.setItem(USED_KEY, '1');

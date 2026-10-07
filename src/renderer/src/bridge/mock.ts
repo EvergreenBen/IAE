@@ -256,7 +256,7 @@ export function createMockBridge(): IaeBridge {
           { root: ROOT, name: 'Recipe Box', isNew: false, lastOpenedAt: now() - 3_600_000, summary: 'Save, cook and share recipes.' },
           { root: '/Users/you/Projects/trailhead', name: 'Trailhead', isNew: false, lastOpenedAt: now() - 86_400_000 * 3, summary: 'Hiking trip planner for small groups.' },
         ],
-        defaultParent: '/Users/you/IAE Projects',
+        defaultParent: '/Users/you/Arxitect Projects',
         claude: 'ready',
       };
     },
@@ -275,7 +275,7 @@ export function createMockBridge(): IaeBridge {
     async createProject(name) {
       timers.forEach(clearTimeout);
       timers = [];
-      const snap = snapshot(`/Users/you/IAE Projects/${slug(name)}`, name, true);
+      const snap = snapshot(`/Users/you/Arxitect Projects/${slug(name)}`, name, true);
       emit({ type: 'project/opened', snapshot: snap });
       later(500, () => void leadSays(`A blank page for ${name}. Tell me who it's for and the one thing they should be able to do on day one.`));
       return snap;

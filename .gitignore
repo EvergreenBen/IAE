@@ -15,7 +15,7 @@ playwright-report/
 test-results/
 # The demo repo ships its (fake) env files on purpose
 !examples/**/.env
-# Per-project IAE state created when examples are opened in place
+# Per-project Arxitect state created when examples are opened in place
 examples/**/.iae/
 *.tsbuildinfo
 release/

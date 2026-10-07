@@ -1,8 +1,8 @@
-# Using IAE
+# Using Arxitect
 
-Everything IAE can do, and how to get the most out of it.
+Everything Arxitect can do, and how to get the most out of it.
 
-IAE is a desktop app for designing software with Claude. You don't type code
+Arxitect is a desktop app for designing software with Claude. You don't type code
 into a terminal here — you architect and ideate, and Claude builds. The screen
 is one living map of your system, a lead called Archie who talks with you, and
 the builders who do the work, each standing on the part of the map they're
@@ -26,7 +26,7 @@ npm run dev
 ```
 
 You need Claude Code installed and signed in. **If `claude` works in your
-terminal, IAE works** — it uses the same login. `ANTHROPIC_API_KEY` is honoured
+terminal, Arxitect works** — it uses the same login. `ANTHROPIC_API_KEY` is honoured
 if you've set one.
 
 Two optional extras, both worth it if you intend to talk rather than type:
@@ -37,7 +37,7 @@ npm run voice:setup    # ~270MB: on-device speech-to-text, works offline
 
 For a markedly better voice for Archie, install a premium system voice:
 **System Settings → Accessibility → Spoken Content → System voice → Manage
-voices → English → Ava (Premium)** or **Zoe (Premium)**. IAE finds and prefers
+voices → English → Ava (Premium)** or **Zoe (Premium)**. Arxitect finds and prefers
 it automatically — it ranks Premium above Enhanced above Siri above stock, and
 never picks the novelty voices.
 
@@ -48,7 +48,7 @@ Other commands you may want:
 | `npm run dev` | The desktop app, hot reload, real Claude |
 | `npm run web` | Renderer only in a browser against a mock engine — every surface without using tokens |
 | `npm run build` | Production bundle into `out/` |
-| `npm run package` | `release/mac-arm64/IAE.app` (unsigned, local use) |
+| `npm run package` | `release/mac-arm64/Arxitect.app` (unsigned, local use) |
 | `npm test` / `npm run typecheck` | The checks |
 
 ---
@@ -57,7 +57,7 @@ Other commands you may want:
 
 The Home screen offers two doors, and remembers where you've been.
 
-- **New project** (`⌘N`) — name it, and IAE creates the folder and opens a
+- **New project** (`⌘N`) — name it, and Arxitect creates the folder and opens a
   blank canvas. Archie greets you and asks what you're building.
 - **Open a folder…** (`⌘O`) — point at any existing repo.
 - **Recent** — arrow keys move, `↵` opens.
@@ -70,7 +70,7 @@ architecture. Atlas never modifies anything. When it's done, Archie tells you
 what kind of system it is and asks what you're changing today. It often spots
 genuine gaps on its own.
 
-Everything IAE knows about your project lives in `<project>/.iae/` —
+Everything Arxitect knows about your project lives in `<project>/.iae/` —
 `map.json`, `agenda.json`, `decisions.json`, `transcript.jsonl`, `state.json`,
 `notes.json`. It's plain JSON, it's yours, and it's git-ignorable.
 
@@ -89,7 +89,7 @@ question is waiting.
 - **Hold `Space`** and talk (push-to-talk). Release to send. Outside a text
   field it starts instantly; inside the intent line it waits 200ms and only
   when the line is empty, so typing spaces never triggers it.
-- **Hands-free** — turn it on and just talk. IAE listens continuously and works
+- **Hands-free** — turn it on and just talk. Arxitect listens continuously and works
   out your turns by itself.
 
 ### What's worth saying
@@ -111,7 +111,7 @@ being concrete about intent and letting it handle structure:
 
 While you're still talking, parts of the system sketch themselves onto the map
 as dashed translucent discs. They accumulate as you speak and settle into real
-nodes when Archie commits them. You don't act on ghosts; they're IAE thinking
+nodes when Archie commits them. You don't act on ghosts; they're Arxitect thinking
 along with you, and they're the fastest way to tell whether you've been
 understood.
 
@@ -270,7 +270,7 @@ commands and skills — `/code-review`, `/security-review`, whatever you have
 installed. Pick one and it runs as a builder on the map, with arguments if you
 pass them.
 
-This is the thing to remember: IAE doesn't replace Claude Code, it gives it a
+This is the thing to remember: Arxitect doesn't replace Claude Code, it gives it a
 map. Everything you've configured still applies.
 
 ---
@@ -294,7 +294,7 @@ Each change saves on its own.
 | **Autonomy** | See below. |
 | **Builders at once** | 1–8, default 3. |
 
-### Autonomy — the setting that changes how IAE feels
+### Autonomy — the setting that changes how Arxitect feels
 
 | Mode | |
 |---|---|

@@ -1,4 +1,4 @@
-# PRD: the CEC project brief, and how IAE adapts it
+# PRD: the CEC project brief, and how Arxitect adapts it
 
 ## Original PRD (summarised faithfully)
 
@@ -42,11 +42,11 @@ the human.
 - *Agent team visualiser.* Engaging visuals of every agent and what it's working
   on (see octogent, fig. 1).
 
-## IAE's adaptations (decided with the product owner)
+## Arxitect's adaptations (decided with the product owner)
 
-| PRD | IAE | Why |
+| PRD | Arxitect | Why |
 |---|---|---|
-| "IDE" | **IAE, the Integrated Architecture Environment** | People architect and ideate. Claude develops. |
+| "IDE" | **Arxitect** | People architect and ideate. Claude develops. |
 | Main panel + side panels | **One full-bleed map, no panels** | Panels turn into an IDE. The map is the interface. |
 | Pulsating leader icon | **Archie**, a small original character whose *expressions* show listening, thinking, speaking, or "has a question" | A pulsing orb reads as AI slop. Intentional states read as a partner. |
 | File system visualiser | **Files live inside the nodes that own them.** Dive in to find them. ⌘M (meaning mode) swaps names for meanings. | You learn where things live by going there. No file tree. |
@@ -59,7 +59,7 @@ the human.
 ## Success
 
 The win condition: a developer who lives in Claude Code in a terminal would
-rather use IAE. It is demoable, fun, and faster for real work. Concretely:
+rather use Arxitect. It is demoable, fun, and faster for real work. Concretely:
 
 - An empty folder becomes a sketched architecture within a minute of talking.
 - An existing repo has a credible map within about a minute of opening, and you

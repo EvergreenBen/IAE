@@ -97,7 +97,7 @@ export function buildContext(i: ContextInput): { text: string; fullMap: boolean 
   const lines: string[] = [];
   for (const n of i.notes ?? []) lines.push(`note: ${n}`);
   const fileCount = ws.files.length;
-  lines.push(`project: ${ws.info.name} · ${fileCount} file${fileCount === 1 ? '' : 's'}${ws.info.isNew ? ' · started empty in IAE' : ''}`);
+  lines.push(`project: ${ws.info.name} · ${fileCount} file${fileCount === 1 ? '' : 's'}${ws.info.isNew ? ' · started empty in Arxitect' : ''}`);
   lines.push(viewLine(ws));
   lines.push(crew.length ? `crew:\n${crew.map((c) => `- ${c}`).join('\n')}${i.slots ? `\n${i.slots}` : ''}` : 'crew: nobody working');
   const open = ws.agenda.open();

@@ -1,20 +1,20 @@
-# IAE: Integrated Architecture Environment
+# Arxitect
 
-IAE is a desktop app for designing software with Claude. It runs on Claude Code
+Arxitect is a desktop app for designing software with Claude. It runs on Claude Code
 (through the Claude Agent SDK), but the human doesn't type code into a terminal
 here. They **architect and ideate**. Claude builds. The screen shows one living
 architecture map of the system, a small companion called Archie (the lead) who
 talks with you, and the agents who do the building, each shown on the part of
 the map where it is working.
 
-> North star: someone who uses Claude Code in a terminal today switches to IAE
+> North star: someone who uses Claude Code in a terminal today switches to Arxitect
 > because it is clearer, faster and more fun. It has no idle time, and they
 > understand their own system better than before.
 
 Read these before making product or design decisions:
 
 - `docs/GUIDE.md`: the user guide — every feature and how it is meant to be used
-- `docs/PRD.md`: the original PRD and how IAE departs from it
+- `docs/PRD.md`: the original PRD and how Arxitect departs from it
 - `docs/DESIGN.md`: visual language, interaction model, motion, copy
 - `docs/CONVERSATION.md`: how the lead thinks, talks, asks and never idles
 - `docs/ARCHITECTURE.md`: processes, engine, data flow, Claude Code integration
@@ -57,7 +57,7 @@ npm run build        # production bundle into out/
 npm run typecheck    # both tsconfigs (node + web)
 npm test             # vitest (shared/ + engine pure logic)
 npm run voice:setup  # optional: pre-download the speech model for offline voice
-npm run package      # release/mac-arm64/IAE.app (unsigned, local use)
+npm run package      # release/mac-arm64/Arxitect.app (unsigned, local use)
 ```
 
 Engine scripts (real Claude, they cost tokens):
@@ -68,8 +68,8 @@ node scripts/converse.mjs <scenario>     # multi-turn conversation scenarios + s
                                          # climbing | stripe | idle | bargein | resume | sketch | rename
 ```
 
-Auth: IAE uses whatever Claude Code uses. If `claude` works in your terminal,
-IAE works. `ANTHROPIC_API_KEY` is honoured if set.
+Auth: Arxitect uses whatever Claude Code uses. If `claude` works in your terminal,
+Arxitect works. `ANTHROPIC_API_KEY` is honoured if set.
 
 ## Layout
 
@@ -123,7 +123,7 @@ Per-project state lives in the user's project at `<project>/.iae/`
   (fast, warm session), builders `claude-opus-5-5`, sketcher `claude-haiku-4-5`.
   All are configurable in Settings.
 - The lead session must stay lean: `strictMcpConfig: true`, `tools: []`, a
-  custom system prompt, and only IAE's in-process MCP tools. With that it
+  custom system prompt, and only Arxitect's in-process MCP tools. With that it
   replies in about 1 second. Builders get the full Claude Code preset.
 - Keep files focused (< ~400 lines). Prefer small modules over clever ones.
 - macOS is the primary target. Don't break other platforms gratuitously.

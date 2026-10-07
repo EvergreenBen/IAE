@@ -1,6 +1,6 @@
-# IAE architecture
+# Arxitect architecture
 
-This document describes IAE's own architecture. It is also the map IAE should
+This document describes Arxitect's own architecture. It is also the map Arxitect should
 draw of itself.
 
 ```
@@ -176,7 +176,7 @@ App-level: `<userData>/recent.json` and `<userData>/settings.json`.
 
 ## Packaging
 
-`npm run package` produces `release/mac-arm64/IAE.app` with electron-builder
+`npm run package` produces `release/mac-arm64/Arxitect.app` with electron-builder
 (unsigned, for local use). Claude Code's native binary is unpacked from the
 asar (`asarUnpack` in `electron-builder.yml`), and `src/main/index.ts` points
 the SDK at it with `IAE_CLAUDE_PATH`. Only main-process runtime modules are

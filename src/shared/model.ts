@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// IAE domain model. Shared by the main process (engine) and the renderer (map).
+// Arxitect domain model. Shared by the main process (engine) and the renderer (map).
 // This file is the contract — change it deliberately and update both sides.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -207,7 +207,7 @@ export interface GhostProposal {
 export interface ProjectInfo {
   root: string;
   name: string;
-  /** true when the folder had no code when first opened in IAE. */
+  /** true when the folder had no code when first opened in Arxitect. */
   isNew: boolean;
   lastOpenedAt: number;
   /** One-line description, once known. */

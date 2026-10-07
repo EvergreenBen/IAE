@@ -21,7 +21,7 @@ export interface ProjectState {
   leadSessionId?: string;
   cartographedAt?: number;
   createdAt: number;
-  /** The folder had no code the first time IAE opened it. */
+  /** The folder had no code the first time Arxitect opened it. */
   isNew?: boolean;
   /** One line describing the system (from the cartographer or the lead). */
   summary?: string;
@@ -53,7 +53,7 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
   try {
     return JSON.parse(text) as T;
   } catch {
-    // Unreadable (a merge conflict, a torn write): keep a copy before IAE writes a fresh one over it.
+    // Unreadable (a merge conflict, a torn write): keep a copy before Arxitect writes a fresh one over it.
     await writeFile(`${file}.${Date.now()}.bak`, text).catch(() => {});
     console.warn(`[iae:store] ${file} couldn't be parsed; kept a .bak copy and started fresh`);
     return fallback;
@@ -233,7 +233,7 @@ export class AppStore {
 // ── New projects ─────────────────────────────────────────────────────────────
 
 export function defaultProjectsDir(homeDir: string): string {
-  return join(homeDir, 'IAE Projects');
+  return join(homeDir, 'Arxitect Projects');
 }
 
 async function isEmptyDir(dir: string): Promise<boolean> {

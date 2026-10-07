@@ -1,5 +1,5 @@
 // A deliberately small app menu. Electron's default menu claims ⌘M (minimize)
-// and ⌘0 (actual size), which IAE uses for meaning mode and fit-to-scope, so
+// and ⌘0 (actual size), which Arxitect uses for meaning mode and fit-to-scope, so
 // those accelerators are left free here. The Edit menu is required on macOS
 // for copy/paste/undo to work in text fields.
 import { app, Menu, type MenuItemConstructorOptions } from 'electron';

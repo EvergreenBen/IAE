@@ -18,7 +18,7 @@ import type {
 
 export interface HomeInfo {
   recent: ProjectInfo[];
-  /** Where new projects are created by default (e.g. ~/IAE Projects). */
+  /** Where new projects are created by default (e.g. ~/Arxitect Projects). */
   defaultParent: string;
   claude: ClaudeStatus;
   claudeDetail?: string;

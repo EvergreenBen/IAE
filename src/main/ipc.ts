@@ -7,9 +7,9 @@ const allowed = new Set<string>(BRIDGE_METHODS);
 
 export function registerIpc(api: IaeApi): void {
   ipcMain.handle(IPC_INVOKE, async (_event, method: string, args: unknown[]) => {
-    if (!allowed.has(method)) throw new Error(`Unknown IAE method: ${method}`);
+    if (!allowed.has(method)) throw new Error(`Unknown Arxitect method: ${method}`);
     const fn = (api as unknown as Record<string, (...a: unknown[]) => unknown>)[method];
-    if (typeof fn !== 'function') throw new Error(`IAE method not implemented: ${method}`);
+    if (typeof fn !== 'function') throw new Error(`Arxitect method not implemented: ${method}`);
     return await fn.apply(api, args ?? []);
   });
 }

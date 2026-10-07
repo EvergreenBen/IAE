@@ -6,7 +6,7 @@ export const CLIENT_APP = 'iae/0.1.0';
 
 const t0 = Date.now();
 export function log(scope: string, ...args: unknown[]): void {
-  console.log(`[iae:${scope} +${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...args);
+  console.log(`[arxitect:${scope} +${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...args);
 }
 export const debug = (scope: string, ...args: unknown[]): void => {
   if (process.env.IAE_DEBUG) log(scope, ...args);
@@ -60,14 +60,16 @@ export class InputQueue implements AsyncIterable<SDKUserMessage> {
   }
 }
 
-/** Options every IAE session shares: identification and an optional binary override. */
+/** Options every Arxitect session shares: identification and an optional binary override. */
 export function baseOptions(cwd: string): Options {
   const opts: Options = {
     cwd,
     env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: CLIENT_APP },
     stderr: (d: string) => debug('cli', d.trim()),
   };
-  if (process.env.IAE_CLAUDE_PATH) opts.pathToClaudeCodeExecutable = process.env.IAE_CLAUDE_PATH;
+  // IAE_CLAUDE_PATH is the old name, still honoured for anyone who set it.
+  const claudePath = process.env.ARXITECT_CLAUDE_PATH || process.env.IAE_CLAUDE_PATH;
+  if (claudePath) opts.pathToClaudeCodeExecutable = claudePath;
   return opts;
 }
 
@@ -113,7 +115,7 @@ export async function oneShot(prompt: string, options: Options, timeoutMs = 45_0
   }
 }
 
-/** Lean defaults for IAE-internal sessions: no user settings, no connectors. */
+/** Lean defaults for Arxitect-internal sessions: no user settings, no connectors. */
 export function leanOptions(cwd: string): Options {
   return {
     ...baseOptions(cwd),

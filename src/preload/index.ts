@@ -1,4 +1,4 @@
-// Exposes the typed IAE bridge on window.iae. Every method is a thin
+// Exposes the typed Arxitect bridge on window.iae. Every method is a thin
 // ipcRenderer.invoke; events arrive on a single channel.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import { BRIDGE_METHODS, IPC_EVENT, IPC_INVOKE, type IaeBridge } from '../shared/bridge';

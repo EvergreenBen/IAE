@@ -231,7 +231,7 @@ export class BuilderRun {
   }
 }
 
-/** IAE's own tools are approved in canUseTool (listing them in allowedTools would shadow it). */
+/** Arxitect's own tools are approved in canUseTool (listing them in allowedTools would shadow it). */
 function permissionOptions(autonomy: Autonomy, canUseTool: CanUseTool, ownTools: string[]) {
   if (autonomy === 'full') return { permissionMode: 'bypassPermissions' as const, allowDangerouslySkipPermissions: true, allowedTools: ownTools };
   if (autonomy === 'ask') return { permissionMode: 'default' as const, canUseTool };

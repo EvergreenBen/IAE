@@ -1,6 +1,6 @@
-# IAE design
+# Arxitect design
 
-IAE should feel like an architect's drafting table with a thoughtful partner
+Arxitect should feel like an architect's drafting table with a thoughtful partner
 beside you. It should not feel like a terminal, an IDE, or a dashboard. These
 rules hold for every surface.
 

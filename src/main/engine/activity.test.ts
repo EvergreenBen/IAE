@@ -52,7 +52,7 @@ describe('humanCommand', () => {
 });
 
 describe('builder commands behind a cd', () => {
-  const CRAG = '/Users/ana/Desktop/IAE Projects/Crag Night';
+  const CRAG = '/Users/ana/Desktop/Arxitect Projects/Crag Night';
   const cd = `cd "${CRAG}" && `;
 
   it('classifies by the real command, not the cd', () => {

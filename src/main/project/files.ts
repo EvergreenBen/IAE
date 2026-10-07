@@ -138,7 +138,7 @@ export async function scanFiles(root: string, max = MAX_FILES): Promise<ScannedF
   return out;
 }
 
-/** True when the folder has nothing but IAE/git scaffolding. */
+/** True when the folder has nothing but Arxitect/git scaffolding. */
 export function hasNoCode(files: ScannedFile[]): boolean {
   return files.every((f) => f.path === '.gitignore' || f.path.startsWith('.iae/'));
 }
@@ -282,7 +282,7 @@ export async function writeProjectFile(root: string, rel: string, content: strin
   if (typeof content !== 'string') throw new Error('File content must be text.');
   const abs = await resolveInside(root, rel);
   const path = toPosix(relative(root, abs));
-  if (path === '.git' || path.startsWith('.git/')) throw new Error('IAE does not edit files inside .git.');
+  if (path === '.git' || path.startsWith('.git/')) throw new Error('Arxitect does not edit files inside .git.');
   await mkdir(dirname(abs), { recursive: true });
   await writeFile(abs, content);
   return path;

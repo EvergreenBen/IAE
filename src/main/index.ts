@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, session, shell, systemPreferences } from 'electron';
-import { existsSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,13 +11,41 @@ import { Engine, type EngineHost } from './engine/engine';
 const here = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url));
 
 adoptLoginShellPath();
-app.setName('IAE');
+app.setName('Arxitect');
+adoptOldUserData();
+
+/**
+ * The app used to be called IAE, and Electron derives the userData folder from
+ * the name — so settings and the recent-project list would be left behind in
+ * the old one. Carry them across the first time.
+ *
+ * Only our own files move: Chromium has usually created the new folder (for
+ * its caches) before this runs, so the folder existing says nothing about
+ * whether the settings made it. The old copies are left where they are, so a
+ * half-finished move can simply be run again.
+ */
+function adoptOldUserData(): void {
+  const next = app.getPath('userData');
+  const prev = join(app.getPath('appData'), 'IAE');
+  if (prev === next) return;
+  for (const name of ['settings.json', 'recent.json']) {
+    try {
+      const from = join(prev, name);
+      const to = join(next, name);
+      if (!existsSync(from) || existsSync(to)) continue;
+      mkdirSync(next, { recursive: true });
+      copyFileSync(from, to);
+    } catch {
+      // Starting with defaults beats not starting at all.
+    }
+  }
+}
 
 // Packaged builds: Claude Code's native binary is unpacked next to the asar
 // archive (see electron-builder.yml). Point the Agent SDK at it.
-if (app.isPackaged && !process.env.IAE_CLAUDE_PATH) {
+if (app.isPackaged && !process.env.ARXITECT_CLAUDE_PATH) {
   const unpacked = join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@anthropic-ai', `claude-agent-sdk-${process.platform}-${process.arch}`, process.platform === 'win32' ? 'claude.exe' : 'claude');
-  if (existsSync(unpacked)) process.env.IAE_CLAUDE_PATH = unpacked;
+  if (existsSync(unpacked)) process.env.ARXITECT_CLAUDE_PATH = unpacked;
 }
 
 let win: BrowserWindow | null = null;
@@ -42,8 +70,8 @@ function createWindow(): void {
     minWidth: 960,
     minHeight: 640,
     show: false,
-    title: 'IAE',
-    backgroundColor: '#F5F3EE',
+    title: 'Arxitect',
+    backgroundColor: '#070B14',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 20 },
     webPreferences: {
@@ -107,7 +135,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// Wait for the engine to flush .iae/ writes and stop sessions before exiting.
+// Wait for the engine to flush project-state writes and stop sessions before exiting.
 let quitting = false;
 app.on('before-quit', (e) => {
   if (quitting) return;

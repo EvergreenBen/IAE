@@ -17,7 +17,7 @@ export const ATLAS_ID = 'atlas';
 const REMOVE_AFTER_MS = 6_000;
 const TOOLS = ['Read', 'Glob', 'Grep'];
 
-const SYSTEM = `You are Atlas, IAE's cartographer: a fast, read-only code explorer that draws architecture maps. Work efficiently: make independent tool calls in parallel, use Glob and Grep to find things, and Read only what matters (manifests, entry points, routers, schemas, config). Never modify files. Your final message is one plain sentence describing the system.`;
+const SYSTEM = `You are Atlas, Arxitect's cartographer: a fast, read-only code explorer that draws architecture maps. Work efficiently: make independent tool calls in parallel, use Glob and Grep to find things, and Read only what matters (manifests, entry points, routers, schemas, config). Never modify files. Your final message is one plain sentence describing the system.`;
 
 /** A compact picture of the tree: directories with file counts, then a sample of files, shallow first. */
 export function fileSample(paths: string[], maxFiles = 200, maxDirs = 60): string {

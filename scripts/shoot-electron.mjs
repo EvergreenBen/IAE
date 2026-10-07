@@ -41,8 +41,8 @@ await page.setViewportSize({ width: w, height: h }).catch(() => {});
 const logs = [];
 page.on('console', (m) => (m.type() === 'error' || m.type() === 'warning' || opt.events) && logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
-app.process().stdout?.on('data', (d) => process.env.IAE_MAIN_LOG && process.stdout.write(`[main] ${d}`));
-app.process().stderr?.on('data', (d) => process.env.IAE_MAIN_LOG && process.stderr.write(`[main] ${d}`));
+app.process().stdout?.on('data', (d) => process.env.ARXITECT_MAIN_LOG && process.stdout.write(`[main] ${d}`));
+app.process().stderr?.on('data', (d) => process.env.ARXITECT_MAIN_LOG && process.stderr.write(`[main] ${d}`));
 await page.waitForLoadState('domcontentloaded');
 await page.waitForTimeout(1200);
 if (opt.events) {

@@ -1,5 +1,5 @@
 // How the lead's Claude Code session is configured. Lean on purpose: no user
-// settings or connectors, a custom system prompt and only IAE's own tools (plus
+// settings or connectors, a custom system prompt and only Arxitect's own tools (plus
 // a quick look at code). With these options it answers in about a second.
 
 import type { McpSdkServerConfigWithInstance, Options } from '@anthropic-ai/claude-agent-sdk';

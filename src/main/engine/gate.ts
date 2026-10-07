@@ -1,4 +1,4 @@
-// IAE's own gate in front of a builder's shell (and, in "ask" mode, its file
+// Arxitect's own gate in front of a builder's shell (and, in "ask" mode, its file
 // writes). Claude Code consults canUseTool only when no allow rule matches,
 // and many people allow Bash(*) in ~/.claude/settings.json, which would turn
 // "ask before running commands" into "never ask". A PreToolUse hook runs

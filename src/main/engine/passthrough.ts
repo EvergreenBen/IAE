@@ -19,7 +19,7 @@ export interface ClaudeCheck {
   detail?: string;
 }
 
-const NOT_SIGNED_IN = 'Claude Code is not signed in. Run `claude` in a terminal and use /login, then reopen IAE.';
+const NOT_SIGNED_IN = 'Claude Code is not signed in. Run `claude` in a terminal and use /login, then reopen Arxitect.';
 
 /**
  * Starts a session without sending anything (no tokens spent) and reads the

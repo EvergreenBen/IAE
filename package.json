@@ -1,8 +1,8 @@
 {
-  "name": "iae",
-  "productName": "IAE",
+  "name": "arxitect",
+  "productName": "Arxitect",
   "version": "0.1.0",
-  "description": "IAE — the Integrated Architecture Environment. A desktop place to architect software with Claude, built on Claude Code.",
+  "description": "Arxitect — a desktop place to architect software with Claude, built on Claude Code.",
   "main": "./out/main/index.js",
   "author": "Ben Williams",
   "license": "UNLICENSED",

@@ -1,6 +1,6 @@
-# Demo: IAE in five minutes
+# Demo: Arxitect in five minutes
 
-This walk-through shows the three things that make IAE different: you talk and
+This walk-through shows the three things that make Arxitect different: you talk and
 the map follows, no one ever waits, and you know where everything lives.
 
 ## Before you start
@@ -12,11 +12,11 @@ npm run dev
 ```
 
 You need Claude Code installed and signed in. If `claude` works in a terminal,
-IAE works.
+Arxitect works.
 
 For the best voice, download a premium system voice: System Settings →
 Accessibility → Spoken Content → System voice → Manage voices → English →
-**Ava (Premium)** or **Zoe (Premium)**. IAE picks it up automatically.
+**Ava (Premium)** or **Zoe (Premium)**. Arxitect picks it up automatically.
 
 ## 1. A blank page becomes an architecture (about 2 minutes)
 
