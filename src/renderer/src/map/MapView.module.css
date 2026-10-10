@@ -8,12 +8,14 @@
   contain: strict;
 }
 
-/* Dot grid: two scales cross-fade so zoom feels continuous at any depth (camera.ts). */
+/* Graph paper: two scales cross-fade so zoom feels continuous at any depth
+   (camera.ts). Rules run through the middle of each cell, on the lattice points. */
 .grid {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background-image: radial-gradient(circle, var(--paper-dot) 1px, transparent 1.4px);
+  --rule: transparent calc(50% - 0.5px), var(--paper-grid) calc(50% - 0.5px), var(--paper-grid) calc(50% + 0.5px), transparent calc(50% + 0.5px);
+  background-image: linear-gradient(to right, var(--rule)), linear-gradient(to bottom, var(--rule));
   background-size: 26px 26px;
 }
 

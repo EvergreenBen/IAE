@@ -1,6 +1,6 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    Arxitect design tokens. The single source of visual truth — see docs/DESIGN.md.
-   Dark, cool, quiet. Deep canvas and light ink, one bright blue accent.
+   Dark, cool, quiet. Charcoal graph-paper canvas, light ink, one bright blue accent.
    Geometry is circular: discs and rings, never rounded squares.
 
    Note on names: `--paper-*` are the canvas layers (now dark) and `--ink-*` the
@@ -16,13 +16,13 @@
 :root {
   color-scheme: dark;
 
-  /* Canvas and its layers — deep blue-black, never flat grey */
-  --paper: #070b14; /* canvas */
+  /* Canvas and its layers — charcoal graph paper under deep blue nodes */
+  --paper: #1d1f22; /* canvas */
   --paper-raised: #0e1726; /* nodes, cards */
-  --paper-sunk: #040710; /* wells, inputs at rest — recedes */
+  --paper-sunk: #141619; /* wells, inputs at rest — recedes */
   --paper-lift: rgba(118, 178, 255, 0.1); /* hover, selection, pressed — rises.
      Translucent, so it lifts over the canvas and over a raised panel alike. */
-  --paper-dot: rgba(104, 173, 255, 0.1); /* dot grid */
+  --paper-grid: rgba(255, 255, 255, 0.055); /* graph-paper rules */
 
   /* Ink — text and lines */
   --ink: #e9f1fb;
