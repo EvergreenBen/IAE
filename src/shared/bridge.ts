@@ -8,6 +8,7 @@ import type { EngineEvent } from './events';
 import type {
   ClaudeStatus,
   FileContent,
+  FileDiff,
   MapOp,
   ProjectInfo,
   ProjectSnapshot,
@@ -40,6 +41,14 @@ export interface IaeApi {
   openProject(root: string): Promise<ProjectSnapshot>;
   createProject(name: string, parentDir?: string): Promise<ProjectSnapshot>;
   closeProject(): Promise<void>;
+  /**
+   * What to show when the window loads: the project already open (the window
+   * reloaded), else the one that was open when the app last quit. Either way
+   * `project/opened` follows. null → Home.
+   */
+  resume(): Promise<ProjectSnapshot | null>;
+  /** Quit and start again, loading new code; unfinished builders pick up where they left off. */
+  restartApp(): Promise<void>;
 
   // ── conversation
   /** A finished user utterance (spoken or typed). */
@@ -66,10 +75,14 @@ export interface IaeApi {
   writeFile(path: string, content: string): Promise<void>;
   /** A short plain-language explanation of a file (cached). */
   explainFile(path: string): Promise<string>;
+  /** The file's changes since the last commit (an untracked file is all added). null when the project isn't a git repository. */
+  diffFile(path: string): Promise<FileDiff | null>;
   revealFile(path: string): Promise<void>;
 
   // ── agents
   stopAgent(agentId: string): Promise<void>;
+  /** Take a finished agent off the crew list (one that changed files stays there for review until cleared). */
+  clearAgent(agentId: string): Promise<void>;
   resolvePermission(id: string, decision: 'allow' | 'deny' | 'always'): Promise<void>;
 
   // ── Claude Code passthrough
@@ -80,6 +93,7 @@ export interface IaeApi {
 
   // ── settings
   getSettings(): Promise<Settings>;
+  /** Saves and emits `settings/changed`. Turning `autoApprove` on also approves every permission request already waiting. */
   setSettings(patch: Partial<Settings>): Promise<Settings>;
 }
 
@@ -96,6 +110,8 @@ export const BRIDGE_METHODS = [
   'openProject',
   'createProject',
   'closeProject',
+  'resume',
+  'restartApp',
   'say',
   'draft',
   'interrupt',
@@ -107,8 +123,10 @@ export const BRIDGE_METHODS = [
   'readFile',
   'writeFile',
   'explainFile',
+  'diffFile',
   'revealFile',
   'stopAgent',
+  'clearAgent',
   'resolvePermission',
   'listCommands',
   'runCommand',

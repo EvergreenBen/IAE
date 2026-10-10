@@ -7,11 +7,17 @@ import { adoptLoginShellPath } from './env';
 import { registerIpc, windowEmitter } from './ipc';
 import { installMenu } from './menu';
 import { Engine, type EngineHost } from './engine/engine';
+import { watchOwnSource } from './selfwatch';
 
 const here = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url));
+/** scripts/dev.mjs runs the app and starts it again when it exits with this code (rebuilding main on the way). */
+const RESTART_CODE = 75;
+const supervised = !app.isPackaged && process.env.ARXITECT_SUPERVISOR === '1';
 
 adoptLoginShellPath();
 app.setName('Arxitect');
+// A separate settings and recent-projects folder: for test runs, or a second copy of the app.
+if (process.env.ARXITECT_USER_DATA) app.setPath('userData', process.env.ARXITECT_USER_DATA);
 adoptOldUserData();
 
 /**
@@ -60,8 +66,16 @@ const host: EngineHost = {
   userDataDir: () => app.getPath('userData'),
   homeDir: () => homedir(),
   revealFile: (absPath) => shell.showItemInFolder(absPath),
+  restart() {
+    if (supervised) return app.exit(RESTART_CODE);
+    app.relaunch();
+    app.exit(0);
+  },
 };
 const engine = new Engine(emit, host);
+
+/** Arxitect's own main-process files that changed since launch (only watched when a restart can rebuild them). */
+let stale: string[] = [];
 
 function createWindow(): void {
   win = new BrowserWindow({
@@ -71,7 +85,7 @@ function createWindow(): void {
     minHeight: 640,
     show: false,
     title: 'Arxitect',
-    backgroundColor: '#070B14',
+    backgroundColor: '#1D1F22',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 20 },
     webPreferences: {
@@ -88,14 +102,14 @@ function createWindow(): void {
   win.on('closed', () => {
     win = null;
     // No window, no audience: stop the lead, builders and watchers rather
-    // than letting them run (and spend) invisibly until the Dock reopens Home.
-    void engine.closeProject().catch(() => {});
+    // than letting them run (and spend) invisibly. The project reopens, and
+    // its builders resume, when a window comes back.
+    void engine.suspend().catch(() => {});
   });
-  // A reload (dev) returns the renderer to Home, so the engine follows.
-  let loadedOnce = false;
+  // A reload (hot reload in dev, ⌘R) keeps the project running: the renderer
+  // asks for it again (resume), so builders are never cut off mid-job.
   win.webContents.on('did-finish-load', () => {
-    if (loadedOnce) void engine.closeProject().catch(() => {});
-    loadedOnce = true;
+    if (stale.length) emit({ type: 'app/stale', files: stale });
   });
 
   // External links open in the browser, never inside the app.
@@ -125,6 +139,12 @@ app.whenReady().then(async () => {
   registerIpc(engine);
   createWindow();
   void engine.boot();
+  if (supervised) {
+    watchOwnSource(app.getAppPath(), (files) => {
+      stale = files;
+      emit({ type: 'app/stale', files });
+    });
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

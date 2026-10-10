@@ -137,6 +137,71 @@ export interface AgentInfo {
   endedAt?: number;
   /** Final summary when done/failed. */
   result?: string;
+  /** The builder's own plan and how far through it is: drives the progress bar and the time-left estimate. */
+  progress?: AgentProgress;
+  /** Files it changed, newest first (at most 100): counted as it edits. */
+  changes?: FileChange[];
+}
+
+/** What a builder changed in one file, counted from its edits (Edit, MultiEdit, Write, NotebookEdit). */
+export interface FileChange {
+  /** Project-relative, POSIX. */
+  path: string;
+  /** Lines added and removed, summed over its edits to the file. */
+  added: number;
+  removed: number;
+  /** The builder created the file. */
+  created?: boolean;
+  /** Its latest edit to the file (epoch ms). */
+  at: number;
+}
+
+// ── Diffs ────────────────────────────────────────────────────────────────────
+
+/** One line of a diff: unchanged context, added, or removed. */
+export interface DiffLine {
+  kind: 'ctx' | 'add' | 'del';
+  text: string;
+  /** Line number in the committed file (context and removed lines). */
+  oldNo?: number;
+  /** Line number in the file as it is now (context and added lines). */
+  newNo?: number;
+}
+
+export interface DiffHunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  /** What git names the hunk after: usually the first line of the enclosing function. */
+  section?: string;
+  lines: DiffLine[];
+}
+
+/** A file's changes since the last commit (git HEAD). */
+export interface FileDiff {
+  path: string;
+  /** `added`: new or untracked, every line is added. */
+  status: 'modified' | 'added' | 'deleted' | 'unchanged';
+  added: number;
+  removed: number;
+  hunks: DiffHunk[];
+  /** Git can't show it as text. */
+  binary?: boolean;
+  /** Too long to show whole: the hunks stop early (the counts still cover everything git showed). */
+  truncated?: boolean;
+}
+
+/** A builder's plan, as it reported it (Arxitect's `progress` tool, or Claude Code's todo list). */
+export interface AgentProgress {
+  /** The steps, in order, in plain words. */
+  steps: string[];
+  /** How many are finished. */
+  done: number;
+  /** Working time the finished steps took, ms (orienting counts towards the first). */
+  spentMs: number;
+  /** When the step in hand began (epoch ms). */
+  stepAt: number;
 }
 
 export type AgentStepKind = 'read' | 'edit' | 'write' | 'bash' | 'search' | 'think' | 'text' | 'tool' | 'result' | 'error';
@@ -225,8 +290,23 @@ export interface ProjectSnapshot {
   files: FileEntry[];
   agenda: AgendaItem[];
   agents: AgentInfo[];
+  /** Each live agent's recent steps (so a reloaded window still shows them). */
+  agentSteps: Record<string, AgentStep[]>;
+  /** Permission requests still waiting for an answer. */
+  permissions: PermissionRequest[];
   decisions: Decision[];
   transcript: TranscriptEntry[];
+}
+
+/** A builder waiting for the person's OK to run a tool. */
+export interface PermissionRequest {
+  id: string;
+  agentId: string;
+  tool: string;
+  summary: string;
+  nodeId: string | null;
+  /** The untruncated request (the whole command), when the summary is clipped. */
+  detail?: string;
 }
 
 export type ClaudeStatus = 'unknown' | 'connecting' | 'ready' | 'unavailable';
@@ -247,13 +327,15 @@ export interface Settings {
   builderModel: string;
   sketchModel: string;
   autonomy: Autonomy;
+  /** Auto mode: every builder/scout permission request is approved without a prompt. */
+  autoApprove: boolean;
   maxBuilders: number;
   voice: {
     /** Lead speaks its replies aloud. */
     speak: boolean;
     /** Mic is open and voice activity detection decides turns (vs. hold Space to talk). */
     handsFree: boolean;
-    /** Preferred system voice name (TTS). Empty → best available. */
+    /** Archie's voice: a Kokoro voice id (af_heart…), 'system' for the best system voice, or a system voice's name. Empty → Kokoro's default. */
     ttsVoice: string;
     rate: number;
     /** transformers.js model id for speech-to-text. */
@@ -268,6 +350,7 @@ export const DEFAULT_SETTINGS: Settings = {
   builderModel: 'claude-opus-5-5',
   sketchModel: 'claude-haiku-4-5',
   autonomy: 'edits',
+  autoApprove: false,
   maxBuilders: 3,
   voice: {
     speak: true,

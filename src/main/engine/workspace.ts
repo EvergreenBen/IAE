@@ -7,7 +7,6 @@ import type { Presence } from '../../shared/bridge';
 import type { EngineEvent } from '../../shared/events';
 import { applyOps, assignFiles } from '../../shared/map';
 import type {
-  AgentInfo,
   ArchMap,
   FileEntry,
   MapOp,
@@ -275,13 +274,13 @@ export class Workspace {
     this.lastUserActivityAt = Date.now();
   }
 
-  snapshot(agents: AgentInfo[]): ProjectSnapshot {
+  snapshot(crew: Pick<ProjectSnapshot, 'agents' | 'agentSteps' | 'permissions'>): ProjectSnapshot {
     return {
       project: this.info,
       map: this.map,
       files: this.files,
       agenda: this.agenda.open(),
-      agents,
+      ...crew,
       decisions: this.agenda.allDecisions(),
       transcript: this.transcript.slice(-60),
     };

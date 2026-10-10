@@ -6,22 +6,29 @@ import { nanoid } from 'nanoid';
 import { homedir } from 'node:os';
 import { basename } from 'node:path';
 import type { EngineEvent } from '../../shared/events';
-import type { AgendaItem, AgentInfo, Settings } from '../../shared/model';
+import type { AgendaItem, AgentInfo, AgentStep, PermissionRequest, Settings } from '../../shared/model';
+import type { SavedJob } from '../project/store';
 import { commandSummary } from './activity';
 import { BuilderRun, type JobSpec, type Outcome, type PermissionAsk } from './builder';
+import { jobSpec, resumableJobs, resumeNote, savedJob } from './crew-persist';
 import { noteNewFiles } from './notes';
+import { resumedProgress } from './progress';
 import { log } from './sdk';
 import type { Workspace } from './workspace';
 
 export const NAME_POOL = ['Ada', 'Kit', 'Rho', 'Juno', 'Max', 'Bea', 'Lev', 'Ivy'];
 const REMOVE_AFTER_MS = 6_000;
 const REMEMBER_MS = 10 * 60_000;
+/** Finished jobs that changed files stay on the crew list for review; at most this many (oldest go first). */
+const MAX_KEPT = 4;
 
 interface PendingPermission {
   agentId: string;
   toolName: string;
   input: Record<string, unknown>;
   suggestions?: PermissionUpdate[];
+  /** The card as the window shows it (its summary is also saved, so a resumed job knows what it was waiting for). */
+  request: PermissionRequest;
   resolve: (r: PermissionResult) => void;
 }
 
@@ -46,12 +53,37 @@ export class Crew {
   private stoppedBy = new Map<string, 'person' | 'lead'>();
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private closed = false;
+  /** What `.iae/crew.json` was last asked to hold. */
+  private savedText = '';
+  /** Finished jobs kept on the crew list because they changed files, oldest first. */
+  private kept: string[] = [];
 
   constructor(private readonly d: CrewDeps) {}
 
   /** Agents to show in a project snapshot. */
   visible(): AgentInfo[] {
-    return [...this.runs.values()].filter((r) => !this.finishedAt.has(r.agent.id)).map((r) => r.agent);
+    return [...this.runs.values()].filter((r) => !this.finishedAt.has(r.agent.id) || this.kept.includes(r.agent.id)).map((r) => r.agent);
+  }
+
+  /** The person is done reviewing a finished job: off the crew list. */
+  clear(id: string): void {
+    const i = this.kept.indexOf(id);
+    if (i === -1) return;
+    this.kept.splice(i, 1);
+    this.d.emit({ type: 'agent/remove', agentId: id });
+    if (this.finishedAt.has(id) && Date.now() - this.finishedAt.get(id)! > REMEMBER_MS) this.runs.delete(id);
+  }
+
+  /** The visible agents' latest steps. */
+  recentSteps(): Record<string, AgentStep[]> {
+    const out: Record<string, AgentStep[]> = {};
+    for (const r of this.runs.values()) if ((!this.finishedAt.has(r.agent.id) || this.kept.includes(r.agent.id)) && r.steps.length) out[r.agent.id] = [...r.steps];
+    return out;
+  }
+
+  /** Permission cards still waiting for an answer. */
+  pendingPermissions(): PermissionRequest[] {
+    return [...this.permissions.values()].map((p) => p.request);
   }
 
   /** By id or name; a name means the newest unfinished run with it ("ada" while "ada-2" works). */
@@ -68,8 +100,9 @@ export class Crew {
     return this.runs.get(id)?.agent.name ?? id;
   }
 
-  spawn(job: JobSpec): AgentInfo {
-    const { name, hue, id } = this.pickName();
+  /** `saved`: a job from before a restart, keeping its name and resuming its session. */
+  spawn(job: JobSpec, saved?: SavedJob): AgentInfo {
+    const { name, hue, id } = saved ?? this.pickName();
     const agent: AgentInfo = {
       id,
       name,
@@ -79,24 +112,54 @@ export class Crew {
       task: clip(job.title, 60),
       nodeId: job.nodeId,
       activity: 'Getting ready',
-      startedAt: Date.now(),
+      startedAt: saved?.startedAt ?? Date.now(),
     };
+    const progress = resumedProgress(saved?.progress, Date.now());
+    if (progress) agent.progress = progress;
+    if (saved?.changes?.length) agent.changes = saved.changes;
     const run = new BuilderRun(job, agent, {
       ws: this.d.ws,
       emit: this.d.emit,
       settings: this.d.settings(),
-      onUpdate: (a) => this.d.emit({ type: 'agent/upsert', agent: a }),
+      onUpdate: (a) => {
+        this.d.emit({ type: 'agent/upsert', agent: a });
+        this.persist();
+      },
       askPermission: (r, ask) => this.askPermission(r, ask),
       onAsked: (r, item, blocking) => this.onAsked(r, item, blocking),
       onFinished: (r, outcome) => this.onFinished(r, outcome),
+      onSession: () => this.persist(),
     });
+    if (saved?.sessionId) {
+      run.sessionId = saved.sessionId;
+      run.resumeNote = resumeNote(saved);
+    }
     this.runs.set(id, run);
     this.d.emit({ type: 'agent/upsert', agent });
     this.queue.push(run);
     this.pump();
     if (this.queue.includes(run)) run.update({ activity: 'Waiting for a free slot' });
-    log('crew', `${name} [${id}] ${job.kind}: ${job.title}`);
+    log('crew', `${name} [${id}] ${job.kind}${saved ? (saved.sessionId ? ' (resumed)' : ' (restarted)') : ''}: ${job.title}`);
+    this.persist();
     return run.agent;
+  }
+
+  /** Picks up the jobs left unfinished when the app closed. Returns their names. */
+  restore(saved: SavedJob[]): string[] {
+    return resumableJobs(saved)
+      .filter((s) => !this.runs.has(s.id))
+      .map((s) => this.spawn(jobSpec(s), s).name);
+  }
+
+  /** Saves every job to `.iae/crew.json` (when something worth saving changed), so unfinished ones resume after a restart. */
+  private persist(): void {
+    if (this.closed) return;
+    const waiting = new Map([...this.permissions.values()].map((p) => [p.agentId, p.request.summary]));
+    const jobs = [...this.runs.values()].map((r) => savedJob(r, waiting.get(r.agent.id)));
+    const text = JSON.stringify(jobs);
+    if (text === this.savedText) return;
+    this.savedText = text;
+    this.d.ws.store.saveCrew(jobs);
   }
 
   /** A note for the lead when a new job would have to wait for a slot. */
@@ -169,24 +232,32 @@ export class Crew {
   // ── permissions ────────────────────────────────────────────────────────────
 
   private askPermission(run: BuilderRun, ask: PermissionAsk): Promise<PermissionResult> {
-    const id = `perm-${nanoid(6)}`;
     // A shell command is summed up from the command itself: Claude Code's title would lead with the `cd`.
     const own = permissionSummary(ask.toolName, ask.input, this.d.ws.root, homedir());
     const summary = ask.toolName === 'Bash' ? own : ask.title || own;
+    // Auto mode: the person said yes in advance, so no card appears.
+    if (this.d.settings().autoApprove) {
+      log('crew', `${run.agent.name} auto-approved: ${summary}`);
+      return Promise.resolve({ behavior: 'allow', updatedInput: ask.input });
+    }
+    const id = `perm-${nanoid(6)}`;
     const prev = { status: run.agent.status, activity: run.agent.activity };
     run.update({ status: 'waiting', activity: 'Waiting for your OK' });
     // The whole command too (the summary is one clipped line); the card shows it on demand.
     const detail = ask.toolName === 'Bash' && typeof ask.input.command === 'string' ? ask.input.command.trim() : undefined;
-    this.d.emit({ type: 'permission/request', id, agentId: run.agent.id, tool: ask.toolName, summary, nodeId: run.agent.nodeId, ...(detail ? { detail } : {}) });
+    const request: PermissionRequest = { id, agentId: run.agent.id, tool: ask.toolName, summary, nodeId: run.agent.nodeId, ...(detail ? { detail } : {}) };
+    this.d.emit({ type: 'permission/request', ...request });
     return new Promise<PermissionResult>((resolve) => {
       const done = (r: PermissionResult) => {
         if (!this.permissions.has(id)) return;
         this.permissions.delete(id);
         this.d.emit({ type: 'permission/resolved', id });
         if (run.agent.status === 'waiting') run.update({ status: prev.status === 'waiting' ? 'working' : prev.status, activity: prev.activity });
+        this.persist();
         resolve(r);
       };
-      this.permissions.set(id, { agentId: run.agent.id, toolName: ask.toolName, input: ask.input, suggestions: ask.suggestions, resolve: done });
+      this.permissions.set(id, { agentId: run.agent.id, toolName: ask.toolName, input: ask.input, suggestions: ask.suggestions, request, resolve: done });
+      this.persist();
       ask.signal.addEventListener('abort', () => done({ behavior: 'deny', message: 'Cancelled.' }), { once: true });
     });
   }
@@ -206,6 +277,14 @@ export class Crew {
         : [{ type: 'addRules', rules: [{ toolName: p.toolName }], behavior: 'allow', destination: 'session' }];
       p.resolve({ behavior: 'allow', updatedInput: p.input, ...(decision === 'always' ? { updatedPermissions: always } : {}) });
     }
+  }
+
+  /** Auto mode was switched on: say yes to everything already waiting. */
+  approveAll(): number {
+    const waiting = [...this.permissions.keys()];
+    for (const id of waiting) this.resolvePermission(id, 'allow');
+    if (waiting.length) log('crew', `auto mode approved ${waiting.length} waiting request${waiting.length === 1 ? '' : 's'}`);
+    return waiting.length;
   }
 
   // ── questions & completion ─────────────────────────────────────────────────
@@ -247,7 +326,8 @@ export class Crew {
     });
     if (this.closed) return;
     const where = run.job.nodeId ? ` on ${run.job.nodeId}` : '';
-    const summary = clip(outcome.result.replace(/\s+/g, ' ').trim(), 400);
+    // The whole summary (builders keep it to a few sentences): cut short, the lead hears half a thought.
+    const summary = clip(outcome.result.replace(/\s+/g, ' ').trim(), 1500);
     const verb = outcome.status === 'done' ? (run.isScout ? 'found' : 'finished') : outcome.status === 'failed' ? 'failed' : 'was stopped on';
     if (outcome.status === 'stopped') {
       const by = this.stoppedBy.get(id);
@@ -260,8 +340,12 @@ export class Crew {
     // New files get one-line meanings (the builder's own notes win).
     const created = [...run.created];
     void ws.rescan().then(() => (created.length && outcome.status === 'done' ? noteNewFiles(ws, created, this.d.settings().sketchModel) : 0));
-    this.later(REMOVE_AFTER_MS, () => this.d.emit({ type: 'agent/remove', agentId: id }));
-    this.later(REMEMBER_MS, () => this.finishedAt.has(id) && this.runs.delete(id));
+    // What it changed is worth a look: it stays on the crew list until cleared. The rest leave after a moment.
+    if (run.agent.changes?.length) {
+      this.kept.push(id);
+      while (this.kept.length > MAX_KEPT) this.clear(this.kept[0]);
+    } else this.later(REMOVE_AFTER_MS, () => this.d.emit({ type: 'agent/remove', agentId: id }));
+    this.later(REMEMBER_MS, () => this.finishedAt.has(id) && !this.kept.includes(id) && this.runs.delete(id));
     this.pump();
     this.d.onLeadEvent();
   }
@@ -284,7 +368,7 @@ export class Crew {
       if (ended && now - ended > REMEMBER_MS) continue;
       const head = `${a.name} [${a.id}] (${a.role}, ${this.queue.includes(r) ? 'queued' : a.status})${a.nodeId ? ` on ${a.nodeId}` : ''} — "${a.task}"`;
       if (ended) lines.push(`${head}: ${clip(a.result ?? '', 160)}`);
-      else lines.push(`${head}${a.activity ? ` · ${a.activity}` : ''}`);
+      else lines.push(`${head}${a.activity ? ` · ${a.activity}` : ''}${planLine(a, now)}`);
     }
     return lines.slice(-8);
   }
@@ -296,6 +380,14 @@ export class Crew {
     this.queue = [];
     await Promise.all([...this.runs.values()].map((r) => r.stop().catch(() => {})));
   }
+}
+
+/** Where a builder is in its plan, for the lead ("how close is Ada?"): " · step 2/5 (Wire playback) · 4 min in". */
+export function planLine(a: AgentInfo, now: number): string {
+  const p = a.progress;
+  const mins = Math.max(0, Math.round((now - a.startedAt) / 60_000));
+  const step = p?.steps.length ? ` · step ${Math.min(p.done + 1, p.steps.length)}/${p.steps.length} (${clip(p.steps[Math.min(p.done, p.steps.length - 1)], 40)})` : '';
+  return `${step} · ${mins} min in`;
 }
 
 /** The one line on a permission card. Shell commands show what really runs (no `cd <project> &&`, short paths). */

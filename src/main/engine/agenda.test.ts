@@ -138,6 +138,19 @@ describe('Agenda', () => {
   });
 });
 
+describe('asking the same question twice', () => {
+  it('keeps one card, now waited on by whoever asked (a builder resumed after a restart)', () => {
+    const { agenda } = setup();
+    const first = agenda.ask({ prompt: 'Keep cookie sessions or move to tokens?', options: ['Tokens', 'Cookies'] });
+    const again = agenda.ask({ prompt: 'keep cookie sessions, or move to tokens', blocking: ['ada'], priority: 0.95 });
+    expect(again.id).toBe(first.id);
+    expect(agenda.open()).toHaveLength(1);
+    expect(again.blocking).toEqual(['ada']);
+    expect(again.options).toEqual(['Tokens', 'Cookies']);
+    expect(agenda.ask({ prompt: 'Which region first?' }).id).not.toBe(first.id);
+  });
+});
+
 describe('decision source', () => {
   it("marks the lead's own calls in the rationale and leaves the person's alone", () => {
     const { agenda } = setup();

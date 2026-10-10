@@ -55,7 +55,7 @@ export type EngineEvent =
   | { type: 'focus'; nodeId: string | null; mode: 'show' | 'enter' }
   // ── architecture autocomplete from the sketch model (lexicon ghosts are renderer-local)
   | { type: 'ghost/proposals'; draftId: string; proposals: GhostProposal[] }
-  // ── builder permission prompts
+  // ── builder permission prompts (never sent while auto mode is on)
   // `detail`: the untruncated request (e.g. the whole Bash command), when the summary is clipped. Optional.
   | { type: 'permission/request'; id: string; agentId: string; tool: string; summary: string; nodeId: string | null; detail?: string }
   | { type: 'permission/resolved'; id: string }
@@ -63,6 +63,8 @@ export type EngineEvent =
   | { type: 'transcript/append'; entry: TranscriptEntry }
   | { type: 'settings/changed'; settings: Settings }
   | { type: 'claude/status'; status: ClaudeStatus; detail?: string }
+  /** Arxitect's own main-process code changed on disk (running from source): restartApp loads it. */
+  | { type: 'app/stale'; files: string[] }
   | { type: 'notice'; level: 'info' | 'warn' | 'error'; text: string };
 
 export type EngineEventType = EngineEvent['type'];

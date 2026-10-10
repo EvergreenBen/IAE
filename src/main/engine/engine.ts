@@ -10,6 +10,7 @@ import {
   DEFAULT_SETTINGS,
   type ClaudeStatus,
   type FileContent,
+  type FileDiff,
   type MapOp,
   type ProjectSnapshot,
   type Settings,
@@ -17,6 +18,7 @@ import {
   type ViewContext,
 } from '../../shared/model';
 import { readProjectFile, resolveInside, writeProjectFile } from '../project/files';
+import { diffFile } from '../project/git';
 import { AppStore, createProjectFolder, defaultProjectsDir, mergeSettings } from '../project/store';
 import { checkClaude } from './passthrough';
 import { ProjectSession } from './project-session';
@@ -30,6 +32,8 @@ export interface EngineHost {
   homeDir(): string;
   /** Show a file in Finder / the platform file manager. */
   revealFile(absPath: string): void;
+  /** Quit and launch again (after the engine has shut down). Absent where there's nothing to relaunch. */
+  restart?(): void;
 }
 
 export class Engine implements IaeApi {
@@ -130,6 +134,7 @@ export class Engine implements IaeApi {
     const snapshot = session.snapshot();
     this.emit({ type: 'project/opened', snapshot });
     await this.app.touchRecent({ ...snapshot.project, lastOpenedAt: Date.now() });
+    await this.app.setLastOpen(root);
     session.start();
     return snapshot;
   }
@@ -140,15 +145,59 @@ export class Engine implements IaeApi {
     return this.openProject(dir);
   }
 
-  /** Serialized with openProject, so a close can't land in the middle of an open. */
+  /** The person closed the project: the next launch starts at Home. Serialized with openProject, so a close can't land in the middle of an open. */
   closeProject(): Promise<void> {
+    return this.close(true);
+  }
+
+  /** The window went away: stop working, but reopen this project next time. */
+  suspend(): Promise<void> {
+    return this.close(false);
+  }
+
+  private close(forget: boolean): Promise<void> {
     const next = this.switching.then(async () => {
+      if (forget) await this.app.setLastOpen(null);
       if (!this.project) return;
       await this.closeCurrent();
       this.emit({ type: 'project/closed' });
     });
     this.switching = next.catch(() => {});
     return next;
+  }
+
+  /**
+   * A window loaded. If a project is still open (the window reloaded), it gets
+   * that project again, builders and all; otherwise the one that was open when
+   * the app last quit reopens, and its unfinished builders resume.
+   */
+  resume(): Promise<ProjectSnapshot | null> {
+    const next = this.switching.then(async (): Promise<ProjectSnapshot | null> => {
+      await this.ready;
+      if (this.project) {
+        const snapshot = this.project.snapshot();
+        this.emit({ type: 'project/opened', snapshot });
+        return snapshot;
+      }
+      const root = await this.app.lastOpen();
+      if (!root) return null;
+      try {
+        return await this.doOpen(root);
+      } catch {
+        await this.app.setLastOpen(null);
+        return null;
+      }
+    });
+    this.switching = next.catch(() => {});
+    return next;
+  }
+
+  /** Shut down cleanly (builders save where they are), then relaunch: new code loads, the project reopens, builders resume. */
+  async restartApp(): Promise<void> {
+    if (!this.host.restart) throw new Error("This copy of Arxitect can't restart itself.");
+    log('engine', 'restarting to load new code');
+    await this.shutdown();
+    this.host.restart();
   }
 
   private async closeCurrent(): Promise<void> {
@@ -217,6 +266,10 @@ export class Engine implements IaeApi {
     return this.need().explainFile(path);
   }
 
+  diffFile(path: string): Promise<FileDiff | null> {
+    return diffFile(this.need().ws.root, path);
+  }
+
   async revealFile(path: string): Promise<void> {
     this.host.revealFile(await resolveInside(this.need().ws.root, path));
   }
@@ -225,6 +278,10 @@ export class Engine implements IaeApi {
 
   async stopAgent(agentId: string): Promise<void> {
     await this.project?.stopAgent(agentId);
+  }
+
+  async clearAgent(agentId: string): Promise<void> {
+    if (typeof agentId === 'string') this.project?.crew.clear(agentId);
   }
 
   async resolvePermission(id: string, decision: 'allow' | 'deny' | 'always'): Promise<void> {

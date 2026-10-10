@@ -26,6 +26,12 @@ export const MAX_OPEN = 5;
 const KEEP_CLOSED = 40;
 const BLOCKING_PRIORITY = 0.95;
 
+/** The same question, give or take case, spacing and punctuation. */
+const sameQuestion = (a: string, b: string) => {
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return norm(a) === norm(b);
+};
+
 export interface AskInput {
   prompt: string;
   kind?: AgendaKind;
@@ -120,7 +126,7 @@ export class Agenda {
     /** Builder names: none of them is at work after a restart. */
     crewNames: string[] = [],
   ) {
-    // Builders don't survive a restart, so nothing is blocked on reload, and no card says one is at work.
+    // On reload nothing is blocked and no card says a builder is at work: a resumed builder that still needs an answer asks again.
     this.items = items.map((i) => {
       if (i.status !== 'open') return i;
       const why = whyWithout(i.why, crewNames);
@@ -143,6 +149,18 @@ export class Agenda {
 
   ask(input: AskInput): AgendaItem {
     const blocking = input.blocking?.filter(Boolean) ?? [];
+    // The same question already on the map (a builder resumed after a restart asks again): one card,
+    // now waited on by whoever asked.
+    const i = this.items.findIndex((x) => x.status === 'open' && sameQuestion(x.prompt, input.prompt));
+    if (i !== -1) {
+      const was = this.items[i];
+      const item: AgendaItem = { ...was, blocking: [...new Set([...(was.blocking ?? []), ...blocking])] };
+      if (blocking.length) item.priority = Math.max(was.priority, BLOCKING_PRIORITY);
+      this.items[i] = item;
+      this.sink.upsert(item);
+      this.save();
+      return item;
+    }
     const options = (input.options ?? []).map((o) => String(o).trim()).filter(Boolean).slice(0, 4);
     const item: AgendaItem = {
       id: `q-${nanoid(6)}`,

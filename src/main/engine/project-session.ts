@@ -6,6 +6,7 @@ import type { Presence, SayMeta } from '../../shared/bridge';
 import type { EngineEvent } from '../../shared/events';
 import type { AgendaItem, AgentInfo, MapOp, ProjectSnapshot, Settings, SlashCommandInfo, ViewContext } from '../../shared/model';
 import { readProjectFile, resolveInside } from '../project/files';
+import type { SavedJob } from '../project/store';
 import { ATLAS_ID, Cartographer } from './cartographer';
 import { Crew, NAME_POOL } from './crew';
 import { Lead } from './lead';
@@ -17,6 +18,8 @@ import { createLeadTools, type LeadToolHost } from './tools';
 import { Workspace } from './workspace';
 
 const TAPPED = 'tapped an answer on the card';
+/** Reopened within this long of closing: a restart (new code, a relaunch), so no welcome-back speech. */
+const QUICK_REOPEN_MS = 10 * 60_000;
 
 export interface SessionDeps {
   emit: (e: EngineEvent) => void;
@@ -38,6 +41,8 @@ export class ProjectSession {
   private constructor(
     readonly ws: Workspace,
     private readonly d: SessionDeps,
+    /** Jobs from `.iae/crew.json`: the unfinished ones resume in start(). */
+    private readonly savedCrew: SavedJob[] = [],
   ) {
     const emit = d.emit;
     this.crew = new Crew({ ws, emit, settings: d.settings, onLeadEvent: () => this.pulse.poke() });
@@ -74,11 +79,12 @@ export class ProjectSession {
   }
 
   static async open(root: string, d: SessionDeps): Promise<ProjectSession> {
-    return new ProjectSession(await Workspace.open(root, d.emit, NAME_POOL), d);
+    const ws = await Workspace.open(root, d.emit, NAME_POOL);
+    return new ProjectSession(ws, d, await ws.store.loadCrew());
   }
 
   snapshot(): ProjectSnapshot {
-    return this.ws.snapshot(this.agents());
+    return this.ws.snapshot({ agents: this.agents(), agentSteps: this.crew.recentSteps(), permissions: this.crew.pendingPermissions() });
   }
 
   agents(): AgentInfo[] {
@@ -96,9 +102,18 @@ export class ProjectSession {
     this.pulse.start();
     const empty = Object.keys(ws.map.nodes).length === 0;
     if (!ws.state.cartographedAt && !ws.state.isNew && ws.files.length > 0) this.startCartographer();
+    // Builders and scouts the app closed on mid-job pick up again.
+    const resumed = this.crew.restore(this.savedCrew);
+    const back = resumed.length ? ` ${resumed.join(' and ')} ${resumed.length === 1 ? 'was' : 'were'} mid-job when the app closed and ${resumed.length === 1 ? 'is' : 'are'} back at it.` : '';
+    // Closed only a moment ago: a restart (new code loading, a relaunch), not a return. The person is mid-flow.
+    const restarted = !!ws.state.closedAt && Date.now() - ws.state.closedAt < QUICK_REOPEN_MS;
+    if (restarted && !this.cartographer) {
+      this.lead.send('events', resumed.length ? `the app restarted a moment ago.${back} Say only that, in one short sentence.` : 'the app restarted a moment ago; nothing was mid-job. Reply exactly <silence/>.');
+      return;
+    }
     if (this.cartographer) this.lead.send('events', 'project opened for the first time. Atlas (the cartographer) is reading the code now; the map is a rough first draft from folder names and will sharpen.');
-    else if (empty) this.lead.send('events', 'project opened: new, empty. Invite the idea in one warm sentence.');
-    else this.lead.send('events', 'project reopened. In one or two sentences, pick up where you left off: what is built or in flight, and the one decision that matters next.');
+    else if (empty) this.lead.send('events', `project opened: new, empty.${back} Invite the idea in one warm sentence.`);
+    else this.lead.send('events', `project reopened.${back} In one or two sentences, pick up where you left off: what is built or in flight, and the one decision that matters next.`);
   }
 
   private startCartographer(): void {
@@ -254,9 +269,11 @@ export class ProjectSession {
       this.lead.refresh(renamed ? `your name is now ${next.leadName} (it was ${prev.leadName}); use the new name from now on.` : undefined);
     }
     if (next.maxBuilders > prev.maxBuilders) this.crew.kick();
+    if (next.autoApprove && !prev.autoApprove) this.crew.approveAll();
   }
 
   async close(): Promise<void> {
+    this.ws.saveState({ closedAt: Date.now() });
     this.pulse.stop();
     this.sketcher.close();
     this.lead.close();

@@ -41,6 +41,9 @@ describe('humanCommand', () => {
     expect(humanCommand('ls -la && ls -la .iae && node -v && pnpm install')).toBe('Installing packages');
     expect(humanCommand('cd apps/api && npx tsc --noEmit 2>&1 | tail -20')).toBe('Typechecking');
     expect(humanCommand('CI=1 pnpm run test -- --run')).toBe('Running tests');
+    // A loop's header isn't the command: what runs inside it is.
+    expect(humanCommand('for f in src/*.ts; do wc -l $f; done')).toBe('Checking the project');
+    expect(humanCommand('for f in a b; do node scripts/check.mjs $f; done')).toBe('Running node check.mjs');
     expect(humanCommand('npm run build')).toBe('Building');
     expect(humanCommand('git status && git diff --stat')).toBe('Reviewing changes');
     expect(humanCommand('npx prisma migrate dev --name init')).toBe('Running migrations');

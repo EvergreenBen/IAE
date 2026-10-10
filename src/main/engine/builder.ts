@@ -5,10 +5,13 @@
 import { query, type CanUseTool, type PermissionResult, type PermissionUpdate, type Query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { EngineEvent } from '../../shared/events';
 import { describeMap, ownerOf } from '../../shared/map';
-import type { AgendaItem, AgentInfo, Autonomy, Settings } from '../../shared/model';
+import type { AgendaItem, AgentInfo, AgentStep, Autonomy, Settings } from '../../shared/model';
 import { describeToolUse, stepText } from './activity';
+import { ChangeTracker } from './changes';
+import { RESTARTED } from './crew-persist';
 import { createCrewTools, crewToolNames } from './crew-tools';
 import { gateHooks } from './gate';
+import { nextProgress, todoReport, type ProgressReport } from './progress';
 import { builderAppend } from './prompts';
 import { baseOptions, errorText, InputQueue, log } from './sdk';
 import type { Workspace } from './workspace';
@@ -41,14 +44,24 @@ export interface RunDeps {
   askPermission(run: BuilderRun, ask: PermissionAsk): Promise<PermissionResult>;
   onAsked(run: BuilderRun, item: AgendaItem, blocking: boolean): void;
   onFinished(run: BuilderRun, outcome: Outcome): void;
+  /** Claude Code reported the session id (saved so the job can resume after a restart). */
+  onSession?(run: BuilderRun): void;
 }
 
 const READ_ONLY_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'NotebookRead', 'BashOutput', 'ToolSearch']);
 const SCOUT_TOOLS = ['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch'];
+/** Steps kept per run, for a window that reloads mid-job. */
+const KEEP_STEPS = 30;
 
 export class BuilderRun {
   agent: AgentInfo;
-  readonly input = new InputQueue();
+  input = new InputQueue();
+  /** Claude Code's session id once known. Set before start() to resume that session. */
+  sessionId?: string;
+  /** The first message of a resumed session, in place of the brief. */
+  resumeNote?: string;
+  /** Resuming a saved session that hasn't started yet (if it can't, the job starts over). */
+  private resuming = false;
   private q: Query | null = null;
   private readonly abort = new AbortController();
   private stopped = false;
@@ -58,6 +71,12 @@ export class BuilderRun {
   private buildingNode: string | null = null;
   /** Files this run created (they get one-line notes when it ends). */
   readonly created = new Set<string>();
+  /** The latest steps, newest last. */
+  readonly steps: AgentStep[] = [];
+  /** When this session began (a resumed job's first start was before the restart). */
+  private workStartedAt = Date.now();
+  /** What it changed, file by file (AgentInfo.changes). */
+  private readonly changes: ChangeTracker;
 
   constructor(
     readonly job: JobSpec,
@@ -65,6 +84,9 @@ export class BuilderRun {
     private readonly d: RunDeps,
   ) {
     this.agent = agent;
+    this.changes = new ChangeTracker(d.ws.root);
+    // A job resumed after a restart carries on counting from what it had changed.
+    if (agent.changes?.length) this.changes.changes = [...agent.changes];
   }
 
   get isScout(): boolean {
@@ -85,7 +107,7 @@ export class BuilderRun {
     const node = this.job.nodeId ? ws.map.nodes[this.job.nodeId] : undefined;
     // Builds mark their node; scouts and slash commands (which run wherever the
     // person happened to be looking) don't.
-    if (node && this.job.kind === 'build') {
+    if (node && this.job.kind === 'build' && !this.buildingNode) {
       this.buildingNode = node.id;
       ws.beginBuild(node.id);
     }
@@ -108,10 +130,14 @@ export class BuilderRun {
       signal: this.abort.signal,
       canAsk: true,
       canNote: !this.isScout,
+      canProgress: !this.isScout,
       onAsked: (item, blocking) => this.d.onAsked(this, item, blocking),
       onWaiting: (waiting) => this.update(waiting ? { status: 'waiting', activity: 'Waiting for your answer' } : { status: 'working', activity: 'Back at work' }),
+      onProgress: (report) => this.report(report),
     });
-    const ownTools = crewToolNames({ canAsk: true, canNote: !this.isScout });
+    const ownTools = crewToolNames({ canAsk: true, canNote: !this.isScout, canProgress: !this.isScout });
+    this.resuming = !!this.sessionId;
+    this.workStartedAt = Date.now();
 
     this.q = query({
       prompt: this.input,
@@ -123,6 +149,7 @@ export class BuilderRun {
         mcpServers: { iae: tools },
         abortController: this.abort,
         includePartialMessages: false,
+        ...(this.sessionId ? { resume: this.sessionId } : {}),
         ...(this.isScout
           ? { tools: SCOUT_TOOLS, allowedTools: [...SCOUT_TOOLS, ...ownTools], permissionMode: 'dontAsk' as const, strictMcpConfig: true }
           : {
@@ -132,11 +159,14 @@ export class BuilderRun {
       },
     });
     this.input.push(this.firstMessage());
-    this.update({ status: 'thinking', activity: this.isScout ? 'Looking around' : 'Getting oriented', startedAt: Date.now() });
-    void this.consume();
+    const activity = this.resuming ? 'Picking up where it left off' : this.isScout ? 'Looking around' : 'Getting oriented';
+    // A resumed job keeps its first start (the panel shows how long it has been at it).
+    this.update({ status: 'thinking', activity, ...(this.resuming ? {} : { startedAt: Date.now() }) });
+    void this.consume(this.q);
   }
 
   private firstMessage(): string {
+    if (this.resuming) return this.resumeNote ?? RESTARTED;
     if (this.job.kind === 'command') return this.job.brief;
     if (this.isScout) return `${this.job.title}\n\n${this.job.brief}\n\nDon't modify anything. Report what you found in 2–5 plain sentences.`;
     return `${this.job.title}\n\n${this.job.brief}`;
@@ -147,6 +177,18 @@ export class BuilderRun {
     if (this.d.settings.autonomy === 'ask' && READ_ONLY_TOOLS.has(toolName)) return { behavior: 'allow', updatedInput: input };
     return this.d.askPermission(this, { toolName, input, title: opts.title, suggestions: opts.suggestions, signal: opts.signal });
   };
+
+  /** The builder said where it is in its plan. */
+  private report(r: ProgressReport): void {
+    const progress = nextProgress(this.agent.progress, r, Date.now(), this.workStartedAt);
+    if (progress && progress !== this.agent.progress) this.update({ progress });
+  }
+
+  private step(step: AgentStep): void {
+    this.steps.push(step);
+    if (this.steps.length > KEEP_STEPS) this.steps.splice(0, this.steps.length - KEEP_STEPS);
+    this.d.emit({ type: 'agent/step', agentId: this.agent.id, step });
+  }
 
   message(text: string): boolean {
     if (this.finished || this.input.isClosed) return false;
@@ -168,17 +210,19 @@ export class BuilderRun {
     this.finish({ status: 'stopped', result: 'Stopped.' });
   }
 
-  private async consume(): Promise<void> {
+  private async consume(q: Query): Promise<void> {
     let error: string | null = null;
     try {
-      for await (const m of this.q!) {
-        if (this.finished) break;
+      for await (const m of q) {
+        if (this.finished || q !== this.q) break;
         this.onMessage(m);
       }
     } catch (e) {
       error = errorText(e);
     }
-    if (this.finished) return;
+    // Started over (the saved session couldn't resume): the new session carries on.
+    if (this.finished || q !== this.q) return;
+    if (this.resuming && !this.stopped) return this.startOver(error);
     if (this.stopped) this.finish({ status: 'stopped', result: 'Stopped.' });
     else this.finish({ status: 'failed', result: error ?? (this.lastText || 'The session ended unexpectedly.') });
   }
@@ -186,28 +230,45 @@ export class BuilderRun {
   private onMessage(m: SDKMessage): void {
     const { ws, emit } = this.d;
     if (m.type === 'system' && m.subtype === 'init') {
-      log('crew', `${this.agent.name} session ${m.session_id} (${m.model}, ${m.permissionMode})`);
+      log('crew', `${this.agent.name} session ${m.session_id} (${m.model}, ${m.permissionMode}${this.resuming ? ', resumed' : ''})`);
+      this.resuming = false;
+      if (m.session_id && m.session_id !== this.sessionId) {
+        this.sessionId = m.session_id;
+        this.d.onSession?.(this);
+      }
       return;
     }
     if (m.type === 'assistant') {
       if (m.error) log('crew', `${this.agent.name} assistant error`, m.error);
-      for (const block of m.message.content as { type: string; text?: string; name?: string; input?: unknown }[]) {
+      for (const block of m.message.content as { type: string; id?: string; text?: string; name?: string; input?: unknown }[]) {
         if (block.type === 'text' && block.text?.trim() && !m.parent_tool_use_id) {
           this.lastText = block.text.trim();
-          emit({ type: 'agent/step', agentId: this.agent.id, step: { at: Date.now(), kind: 'text', text: stepText(block.text) } });
+          this.step({ at: Date.now(), kind: 'text', text: stepText(block.text) });
         } else if (block.type === 'tool_use' && block.name) {
           const input = (block.input && typeof block.input === 'object' ? block.input : {}) as Record<string, unknown>;
+          // Bookkeeping, not work: it moves the bar, not the activity line.
+          if (block.name === 'mcp__iae__progress') continue;
+          if (block.name === 'TodoWrite' && !m.parent_tool_use_id) {
+            const todos = todoReport(input);
+            if (todos) this.report(todos);
+          }
           const act = describeToolUse(ws.root, block.name, input);
-          emit({ type: 'agent/step', agentId: this.agent.id, step: { at: Date.now(), kind: act.kind, text: act.activity, ...(act.path ? { path: act.path } : {}) } });
+          this.step({ at: Date.now(), kind: act.kind, text: act.activity, ...(act.path ? { path: act.path } : {}) });
           if (act.path && act.touch) emit({ type: 'files/touched', path: act.path, agentId: this.agent.id, action: act.touch });
           if (act.path && act.touch === 'create') this.created.add(act.path);
+          if (act.path && block.id) this.changes.begin(block.id, block.name, act.path, input, act.touch === 'create');
           const nodeId = (act.path ? ownerOf(ws.map, act.path) : null) ?? this.agent.nodeId;
           if (this.agent.status !== 'waiting') this.update({ status: 'working', activity: act.activity, file: act.path, nodeId });
         }
       }
       return;
     }
+    if (m.type === 'user') {
+      this.onToolResults(m.message.content, m.tool_use_result);
+      return;
+    }
     if (m.type === 'result') {
+      if (m.subtype !== 'success' && this.resuming) return this.startOver(m.errors?.join('; ') || m.subtype);
       if (m.subtype === 'success') {
         // More messages queued for this session (message_agent): keep going.
         if ((m.queued_turn_count ?? 0) > 0) return;
@@ -217,6 +278,37 @@ export class BuilderRun {
         this.input.close();
         this.finish({ status: 'failed', result: m.errors?.join('; ') || `Stopped: ${m.subtype.replace(/_/g, ' ')}.` });
       }
+    }
+  }
+
+  /** Tool results came back: edits that worked count towards what it changed. */
+  private onToolResults(content: unknown, structured: unknown): void {
+    if (!Array.isArray(content)) return;
+    const results = (content as { type?: string; tool_use_id?: string; is_error?: boolean }[]).filter((b) => b?.type === 'tool_result' && typeof b.tool_use_id === 'string');
+    for (const r of results) {
+      // The structured result belongs to the message's one tool result; with several, each counts from its call.
+      const result = results.length === 1 ? structured : undefined;
+      void this.changes.finish(r.tool_use_id!, r.is_error === true, result, Date.now()).then((changes) => changes && this.update({ changes }));
+    }
+  }
+
+  /** The saved session couldn't be resumed (gone, or never written): start over from the brief. */
+  private startOver(why: string | null): void {
+    log('crew', `${this.agent.name} couldn't resume its session (${why || 'no reason given'}); starting over from the brief`);
+    const old = this.q;
+    this.sessionId = undefined;
+    this.resumeNote = undefined;
+    this.input.close();
+    this.input = new InputQueue();
+    try {
+      old?.close();
+    } catch {
+      // already gone
+    }
+    try {
+      this.start();
+    } catch (e) {
+      this.finish({ status: 'failed', result: errorText(e) });
     }
   }
 

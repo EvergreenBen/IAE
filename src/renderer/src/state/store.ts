@@ -19,20 +19,13 @@ import {
   type Decision,
   type FileEntry,
   type GhostProposal,
+  type PermissionRequest,
   type ProjectInfo,
   type Settings,
   type TranscriptEntry,
 } from '@shared/model';
 
-export interface PermissionRequest {
-  id: string;
-  agentId: string;
-  tool: string;
-  summary: string;
-  nodeId: string | null;
-  /** The untruncated request (the whole command), when the engine sends it. */
-  detail?: string;
-}
+export type { PermissionRequest };
 
 export interface FileTouch {
   path: string;
@@ -73,7 +66,8 @@ export interface CameraRequest {
 }
 
 export interface IaeState {
-  screen: 'home' | 'project';
+  /** 'boot': deciding where to start (a project still open, or the one open at last quit). */
+  screen: 'boot' | 'home' | 'project';
   claude: ClaudeStatus;
   claudeDetail?: string;
   settings: Settings;
@@ -108,6 +102,8 @@ export interface IaeState {
   permissions: PermissionRequest[];
   touches: FileTouch[];
   notices: Notice[];
+  /** Arxitect's own main-process files changed since it started: a restart loads them. */
+  stale: string[];
 
   // ── view (owned by the map / lens)
   scopeId: string | null;
@@ -129,7 +125,7 @@ let noticeSeq = 0;
 let cameraSeq = 0;
 
 export const initialState = (): IaeState => ({
-  screen: 'home',
+  screen: 'boot',
   claude: 'unknown',
   settings: DEFAULT_SETTINGS,
   project: null,
@@ -147,6 +143,7 @@ export const initialState = (): IaeState => ({
   permissions: [],
   touches: [],
   notices: [],
+  stale: [],
   scopeId: null,
   selectedNodeId: null,
   openFile: null,
@@ -172,11 +169,11 @@ export function reduce(s: IaeState, e: EngineEvent): Partial<IaeState> {
         files: snapshot.files,
         agenda: snapshot.agenda,
         agents,
-        agentSteps: {},
+        agentSteps: snapshot.agentSteps ?? {},
         decisions: snapshot.decisions,
         transcript: snapshot.transcript,
         ghosts: {},
-        permissions: [],
+        permissions: snapshot.permissions ?? [],
         touches: [],
         scopeId: null,
         selectedNodeId: null,
@@ -185,7 +182,7 @@ export function reduce(s: IaeState, e: EngineEvent): Partial<IaeState> {
       };
     }
     case 'project/closed':
-      return { ...initialState(), claude: s.claude, settings: s.settings, screen: 'home' };
+      return { ...initialState(), claude: s.claude, settings: s.settings, stale: s.stale, screen: 'home' };
 
     case 'map/ops': {
       const map = applyOps(s.map, e.ops);
@@ -281,6 +278,8 @@ export function reduce(s: IaeState, e: EngineEvent): Partial<IaeState> {
       return { claude: e.status, claudeDetail: e.detail };
     case 'notice':
       return { notices: [...s.notices, { id: ++noticeSeq, level: e.level, text: e.text, at: Date.now() }].slice(-5) };
+    case 'app/stale':
+      return { stale: e.files };
   }
 }
 

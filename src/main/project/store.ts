@@ -10,6 +10,9 @@ import { emptyMap, projectFolderName } from '../../shared/map';
 import {
   DEFAULT_SETTINGS,
   type AgendaItem,
+  type AgentProgress,
+  type FileChange,
+  type AgentStatus,
   type ArchMap,
   type Decision,
   type ProjectInfo,
@@ -25,9 +28,32 @@ export interface ProjectState {
   isNew?: boolean;
   /** One line describing the system (from the cartographer or the lead). */
   summary?: string;
+  /** When Arxitect last closed it (a quick reopen is a restart, not a return). */
+  closedAt?: number;
 }
 
 export type Notes = Record<string, string>;
+
+/** A builder or scout job in `.iae/crew.json`, so an unfinished one can resume after a restart. */
+export interface SavedJob {
+  id: string;
+  name: string;
+  hue: number;
+  kind: 'build' | 'investigate' | 'command';
+  title: string;
+  nodeId: string | null;
+  brief: string;
+  status: AgentStatus;
+  /** The Claude Code session, once it has started: resumed rather than started over. */
+  sessionId?: string;
+  /** The permission it was waiting for when the app closed. */
+  waitingFor?: string;
+  startedAt: number;
+  /** Its plan and how far through it was. */
+  progress?: AgentProgress;
+  /** The files it had changed. */
+  changes?: FileChange[];
+}
 
 export interface LoadedProject {
   map: ArchMap;
@@ -58,6 +84,13 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
     console.warn(`[iae:store] ${file} couldn't be parsed; kept a .bak copy and started fresh`);
     return fallback;
   }
+}
+
+/** Adds a line to an existing `.iae/.gitignore` (written before that file existed). */
+async function ignoreAlso(gitignore: string, name: string): Promise<void> {
+  const text = await readFile(gitignore, 'utf8').catch(() => null);
+  if (text === null || text.split('\n').some((l) => l.trim() === name)) return;
+  await appendFile(gitignore, `${text && !text.endsWith('\n') ? '\n' : ''}${name}\n`).catch(() => {});
 }
 
 const isMap = (m: unknown): m is ArchMap =>
@@ -115,7 +148,8 @@ export class ProjectStore {
     await mkdir(this.dir, { recursive: true });
     const gitignore = this.file('.gitignore');
     // Session ids and the raw transcript are personal; the map, agenda and decisions are worth sharing.
-    if (!existsSync(gitignore)) await writeFile(gitignore, 'transcript.jsonl\nstate.json\n*.tmp\n').catch(() => {});
+    if (!existsSync(gitignore)) await writeFile(gitignore, 'transcript.jsonl\nstate.json\ncrew.json\n*.tmp\n').catch(() => {});
+    else await ignoreAlso(gitignore, 'crew.json');
     const map = existsSync(this.file('map.json')) ? await readJson<ArchMap | null>(this.file('map.json'), null) : null;
     // A map that couldn't be read counts as no map: the project gets redrawn rather than opening blank.
     const hadMap = isMap(map);
@@ -163,6 +197,14 @@ export class ProjectStore {
   saveState(state: ProjectState): void {
     this.json.schedule(this.file('state.json'), () => state);
   }
+  saveCrew(jobs: SavedJob[]): void {
+    this.json.schedule(this.file('crew.json'), () => jobs);
+  }
+
+  async loadCrew(): Promise<SavedJob[]> {
+    const jobs = await readJson<unknown>(this.file('crew.json'), []);
+    return Array.isArray(jobs) ? (jobs as SavedJob[]) : [];
+  }
 
   appendTranscript(entry: TranscriptEntry): void {
     const line = JSON.stringify(entry) + '\n';
@@ -183,6 +225,7 @@ export function mergeSettings(base: Settings, patch: Partial<Settings> | undefin
   const p = patch ?? {};
   const merged: Settings = { ...base, ...p, voice: { ...base.voice, ...(p.voice ?? {}) } };
   if (!['ask', 'edits', 'full'].includes(merged.autonomy)) merged.autonomy = base.autonomy;
+  if (typeof merged.autoApprove !== 'boolean') merged.autoApprove = base.autoApprove;
   if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(merged.leadEffort)) merged.leadEffort = base.leadEffort;
   const n = Number(merged.maxBuilders);
   merged.maxBuilders = Number.isFinite(n) ? Math.min(8, Math.max(1, Math.round(n))) : base.maxBuilders;
@@ -223,6 +266,18 @@ export class AppStore {
     this.recentCache = list.slice(0, MAX_RECENT);
     await mkdir(this.userDataDir, { recursive: true });
     this.json.schedule(this.file('recent.json'), () => this.recentCache);
+  }
+
+  /** The project that was open when the app last quit (or the window closed), if it's still there. */
+  async lastOpen(): Promise<string | null> {
+    const saved = await readJson<{ open?: unknown }>(this.file('session.json'), {});
+    return typeof saved.open === 'string' && existsSync(saved.open) ? saved.open : null;
+  }
+
+  /** null: the person closed it themselves, so the next launch starts at Home. */
+  async setLastOpen(root: string | null): Promise<void> {
+    await mkdir(this.userDataDir, { recursive: true });
+    this.json.schedule(this.file('session.json'), () => ({ open: root }));
   }
 
   flush(): Promise<void> {

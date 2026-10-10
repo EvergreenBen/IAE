@@ -5,12 +5,14 @@
 import type { HomeInfo, IaeBridge, SayMeta } from '@shared/bridge';
 import type { EngineEvent } from '@shared/events';
 import { applyOps, assignFiles, emptyMap, slug } from '@shared/map';
+import { CHANGED_FILE_TEXT, mockChange, mockDiff } from './mockDiffs';
 import { SAMPLE_EXPLAIN, SAMPLE_FILE_TEXT } from './mockFiles';
 import {
   DEFAULT_SETTINGS,
   type AgendaItem,
   type AgentInfo,
   type ArchMap,
+  type FileChange,
   type FileEntry,
   type GhostProposal,
   type MapOp,
@@ -131,7 +133,7 @@ function sampleFiles(map: ArchMap): FileEntry[] {
 }
 
 // Sample contents (and the explanations below) live in ./mockFiles.ts.
-const FILE_TEXT: Record<string, string> = { ...SAMPLE_FILE_TEXT };
+const FILE_TEXT: Record<string, string> = { ...SAMPLE_FILE_TEXT, ...CHANGED_FILE_TEXT };
 
 const BINARY = /\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|woff2?|ttf|mp4|mov|sqlite|db)$/i;
 
@@ -169,22 +171,58 @@ export function createMockBridge(): IaeBridge {
     emit({ type: 'transcript/append', entry: { id: id('t'), at: now(), who: 'lead', text } });
   }
 
-  function runBuilder(agent: Omit<AgentInfo, 'status' | 'startedAt'>, steps: { path: string; activity: string; nodeId: string }[], result: string) {
+  // Permission prompts waiting for the person: prompt id → agent id.
+  const perms = new Map<string, string>();
+  const resolvePerm = (pid: string) => {
+    perms.delete(pid);
+    emit({ type: 'permission/resolved', id: pid });
+  };
+
+  type Ask = { tool: string; summary: string; detail?: string };
+
+  type Step = { path: string; activity: string; nodeId: string; action?: 'read' | 'edit' | 'create' };
+
+  /** A scripted builder. With `ask`, it asks before finishing and waits for the yes (auto mode skips the prompt). */
+  function runBuilder(agent: Omit<AgentInfo, 'status' | 'startedAt'>, steps: Step[], result: string, ask?: Ask) {
     let a: AgentInfo = { ...agent, status: 'starting', startedAt: now() };
     emit({ type: 'agent/upsert', agent: a });
+    const plan = steps.map((st) => st.activity);
     steps.forEach((st, i) => {
       later(1200 + i * 2600, () => {
-        a = { ...a, status: 'working', nodeId: st.nodeId, activity: st.activity, file: st.path };
+        const t = now();
+        const progress = a.progress ? { ...a.progress, done: i, spentMs: t - a.startedAt, stepAt: t } : { steps: plan, done: 0, spentMs: 0, stepAt: a.startedAt };
+        // An edit adds the file to what it changed (newest first), with the counts from its diff.
+        const change = st.action === 'read' ? null : mockChange(st.path, t);
+        const changes: FileChange[] | undefined = change ? [change, ...(a.changes ?? []).filter((c) => c.path !== st.path)] : a.changes;
+        a = { ...a, status: 'working', nodeId: st.nodeId, activity: st.activity, file: st.path, progress, ...(changes ? { changes } : {}) };
         emit({ type: 'agent/upsert', agent: a });
-        emit({ type: 'agent/step', agentId: a.id, step: { at: now(), kind: 'edit', text: st.activity, path: st.path } });
-        emit({ type: 'files/touched', path: st.path, agentId: a.id, action: 'edit' });
+        emit({ type: 'agent/step', agentId: a.id, step: { at: now(), kind: st.action === 'read' ? 'read' : 'edit', text: st.activity, path: st.path } });
+        emit({ type: 'files/touched', path: st.path, agentId: a.id, action: st.action ?? 'edit' });
       });
     });
-    later(1200 + steps.length * 2600 + 800, () => {
-      a = { ...a, status: 'done', activity: undefined, file: undefined, endedAt: now(), result };
+    const end = 1200 + steps.length * 2600;
+    if (ask) {
+      later(end, () => {
+        if (settings.autoApprove) return;
+        a = { ...a, status: 'waiting', activity: 'Waiting for your OK' };
+        emit({ type: 'agent/upsert', agent: a });
+        const pid = id('perm');
+        perms.set(pid, a.id);
+        emit({ type: 'permission/request', id: pid, agentId: a.id, tool: ask.tool, summary: ask.summary, nodeId: a.nodeId, ...(ask.detail ? { detail: ask.detail } : {}) });
+      });
+    }
+    const finish = () => {
+      if ([...perms.values()].includes(a.id)) {
+        later(600, finish);
+        return;
+      }
+      const progress = a.progress && { ...a.progress, done: plan.length };
+      a = { ...a, status: 'done', activity: undefined, file: undefined, endedAt: now(), result, ...(progress ? { progress } : {}) };
       emit({ type: 'agent/upsert', agent: a });
-      later(4000, () => emit({ type: 'agent/remove', agentId: a.id }));
-    });
+      // Like the engine: one that changed files stays on the crew list until cleared.
+      if (!a.changes?.length) later(4000, () => emit({ type: 'agent/remove', agentId: a.id }));
+    };
+    later(end + 800, finish);
   }
 
   function startSampleSession() {
@@ -201,10 +239,12 @@ export function createMockBridge(): IaeBridge {
     runBuilder(
       { id: 'kit', name: 'Kit', role: 'builder', hue: 1, task: 'Cook mode: keep screen awake', nodeId: 'web-pages' },
       [
+        { path: 'apps/web/lib/optimistic.ts', activity: 'Reading optimistic.ts', nodeId: 'web-state', action: 'read' },
+        { path: 'apps/web/app/cook/[id]/useWakeLock.ts', activity: 'Creating useWakeLock.ts', nodeId: 'web-pages', action: 'create' },
         { path: 'apps/web/app/cook/[id]/page.tsx', activity: 'Editing cook page', nodeId: 'web-pages' },
-        { path: 'apps/web/lib/optimistic.ts', activity: 'Reading optimistic.ts', nodeId: 'web-state' },
       ],
       'Cook mode requests a wake lock and releases it on exit.',
+      { tool: 'Bash', summary: 'Run npm install nosleep.js', detail: `cd ${ROOT} && npm install nosleep.js` },
     );
     later(2400, () =>
       pushAgenda({
@@ -228,6 +268,8 @@ export function createMockBridge(): IaeBridge {
       files: isNew ? [] : sampleFiles(map),
       agenda: [],
       agents: [],
+      agentSteps: {},
+      permissions: [],
       decisions: [],
       transcript: [],
     };
@@ -284,6 +326,16 @@ export function createMockBridge(): IaeBridge {
       timers.forEach(clearTimeout);
       timers = [];
       emit({ type: 'project/closed' });
+    },
+    async clearAgent(agentId: string) {
+      emit({ type: 'agent/remove', agentId });
+    },
+    async resume() {
+      // In the browser, URL params decide what opens (main.tsx).
+      return null;
+    },
+    async restartApp() {
+      location.reload();
     },
     async say(text: string, meta?: SayMeta) {
       emit({ type: 'transcript/append', entry: { id: id('t'), at: now(), who: 'user', text } });
@@ -362,6 +414,11 @@ export function createMockBridge(): IaeBridge {
     async explainFile(path) {
       await sleep(SAMPLE_EXPLAIN[path] ? 1100 : 400);
       return SAMPLE_EXPLAIN[path] ?? NOTES[path] ?? `Part of ${path.split('/').slice(0, -1).join('/')}.`;
+    },
+    async diffFile(path) {
+      await sleep(120);
+      // A fresh object each time, as over IPC.
+      return structuredClone(mockDiff(path));
     },
     async revealFile() {},
     async stopAgent(agentId) {

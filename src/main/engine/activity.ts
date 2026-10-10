@@ -130,7 +130,7 @@ const HOUSEKEEPING: [RegExp, string][] = [
   [/^(ls|find|tree|cat|head|tail|grep|rg|wc|pwd|which|stat|file|du|echo|printf|sed\s+-n|node\s+(-v|--version)|(npm|pnpm|yarn)\s+(-v|--version|ls|list|view|info))\b/, 'Checking the project'],
 ];
 /** Says nothing about what the command is for. */
-const NOISE = /^(cd|pushd|popd|export|unset|set|source|\.|sleep|wait|true|false|:|trap|read|fi|done|esac|then|do|else|exit|return)$/;
+const NOISE = /^(cd|pushd|popd|export|unset|set|source|\.|sleep|wait|true|false|:|trap|read|fi|done|esac|then|do|else|exit|return|for|case|select)$/;
 /** Words in front of the real command ("nohup node server.js", "timeout 10 curl …", "xargs kill"). */
 const WRAPPERS = /^(?:(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)|nohup|time|exec|env|command|builtin|xargs(?:\s+-\S+)*|if|then|do|else|elif|while|until|!|\(|\{|timeout\s+\d+[smh]?)\s+)+/;
 

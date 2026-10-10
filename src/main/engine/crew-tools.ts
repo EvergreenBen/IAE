@@ -7,6 +7,7 @@ import type { AgendaItem, NodeStatus, OpSource } from '../../shared/model';
 import { projectPath } from './activity';
 import { anchorNode } from './agenda';
 import { describeResult, normalizeOps, opInput, type OpName } from './mapops';
+import type { ProgressReport } from './progress';
 import { fail, guard, ok } from './tools';
 import type { Workspace } from './workspace';
 
@@ -23,14 +24,18 @@ export interface CrewToolHost {
   canAsk: boolean;
   /** Expose file_notes (the cartographer). */
   canNote: boolean;
+  /** Expose progress (builders): their plan, shown as a bar with a time-left estimate. */
+  canProgress?: boolean;
   onAsked?(item: AgendaItem, blocking: boolean): void;
   onWaiting?(waiting: boolean): void;
+  onProgress?(report: ProgressReport): void;
 }
 
-export const crewToolNames = (h: Pick<CrewToolHost, 'canAsk' | 'canNote'>): string[] => [
+export const crewToolNames = (h: Pick<CrewToolHost, 'canAsk' | 'canNote' | 'canProgress'>): string[] => [
   'mcp__iae__map_update',
   ...(h.canAsk ? ['mcp__iae__ask_architect'] : []),
   ...(h.canNote ? ['mcp__iae__file_notes'] : []),
+  ...(h.canProgress ? ['mcp__iae__progress'] : []),
 ];
 
 export function createCrewTools(h: CrewToolHost): McpSdkServerConfigWithInstance {
@@ -41,9 +46,9 @@ export function createCrewTools(h: CrewToolHost): McpSdkServerConfigWithInstance
   const tools: SdkMcpToolDefinition<any>[] = [
     tool(
       'map_update',
-      `Keep the architecture map truthful. Ops apply in order: {op:"upsertNode", node:{id, parentId?, label?, kind?, status?, summary?, tech?, paths?}}, {op:"upsertEdge", edge:{from, to, kind?, label?}}${
+      `Keep the architecture map truthful. Ops apply in order: {op:"upsertNode", node:{id, parentId?, label?, techLabel?, kind?, status?, summary?, tech?, paths?}}, {op:"upsertEdge", edge:{from, to, kind?, label?}}${
         restricted ? '' : ', {op:"removeNode", id}, {op:"moveNode", id, parentId}, {op:"removeEdge", id:"from->to"}'
-      }. kind: system|client|service|module|data|queue|external|config|infra|ai. paths: project-relative directory prefixes ending in "/" or exact files. Reuse existing node ids where they fit.`,
+      }. kind: system|client|service|module|data|queue|external|config|infra|ai. paths: project-relative directory prefixes ending in "/" or exact files. label: the plain-English role ("Saves your recipes"); techLabel: the developer's name ("Recipe DB"). Reuse existing node ids where they fit.`,
       { ops: z.array(opInput) },
       (args) =>
         guard('map_update', () => {
@@ -116,6 +121,25 @@ export function createCrewTools(h: CrewToolHost): McpSdkServerConfigWithInstance
             }
             const saved = ws.addNotes(known);
             return ok(`Saved ${saved} note${saved === 1 ? '' : 's'}.${unknown.length ? ` Unknown paths skipped: ${unknown.slice(0, 5).join(', ')}.` : ''}`);
+          }),
+      ),
+    );
+  }
+
+  if (h.canProgress) {
+    tools.push(
+      tool(
+        'progress',
+        'Show the person how far along you are: a progress bar with a time-left estimate beside your name. Once you know the plan, send steps: 3–7 short plain-English steps in order ("Read the voice code", "Add the voice picker", "Test it"). Each time you finish one, send done: how many are finished, in the same message as your next tool call so it costs no time. Send steps again if the plan changes.',
+        {
+          steps: z.array(z.string()).optional().describe('The whole plan, in order.'),
+          done: z.number().int().min(0).optional().describe('How many steps are finished.'),
+        },
+        (args) =>
+          guard('progress', () => {
+            if (!args.steps?.length && args.done === undefined) return fail('Send steps, done, or both.');
+            h.onProgress?.(args);
+            return ok('Shown.');
           }),
       ),
     );
