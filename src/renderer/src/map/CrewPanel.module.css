@@ -1,0 +1,252 @@
+/* The crew, top left under the breadcrumb: a quiet list, not a sidebar. A soft
+   wash keeps it legible when the map passes underneath. */
+
+.panel {
+  position: fixed;
+  left: 14px;
+  top: 52px;
+  z-index: var(--z-chrome);
+  width: 288px;
+  max-height: calc(100vh - 52px - 184px);
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: color-mix(in srgb, var(--paper) 78%, transparent);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.row {
+  padding: 7px 8px 8px;
+  border-radius: var(--r-sm);
+  transition: background-color var(--t-fast) var(--ease-out);
+}
+.row:hover,
+.row[data-open] {
+  background: var(--paper-lift);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+.name {
+  flex: none;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+.task {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--ink-2);
+}
+.meta {
+  flex: none;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+.row[data-state='done'] .meta {
+  color: var(--ok);
+}
+.row[data-state='failed'] .meta {
+  color: var(--bad);
+}
+
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 3px 0 0 25px;
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
+.lineText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* How many files it has changed, while the row is closed. */
+.total {
+  flex: none;
+  color: var(--ink-4);
+  font-variant-numeric: tabular-nums;
+}
+.row[data-state='waiting'] .line {
+  color: var(--accent-ink);
+}
+
+.track {
+  height: 2px;
+  margin: 7px 0 0 25px;
+  border-radius: var(--r-pill);
+  background: var(--line);
+  overflow: hidden;
+}
+.fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 900ms var(--ease-out);
+}
+.row[data-state='done'] .fill {
+  background: var(--ok) !important;
+}
+
+.more {
+  overflow: hidden;
+  margin-left: 25px;
+}
+
+.plan,
+.recent {
+  margin: 9px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
+.plan li {
+  position: relative;
+  padding-left: 14px;
+}
+.plan li::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-disc);
+  box-shadow: inset 0 0 0 1px var(--ink-4);
+}
+.plan li[data-done] {
+  color: var(--ink-4);
+}
+.plan li[data-done]::before {
+  background: var(--ink-4);
+}
+.plan li[data-now] {
+  color: var(--ink);
+}
+.plan li[data-now]::before {
+  box-shadow: inset 0 0 0 1px var(--ink-2);
+}
+.recent li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What it changed: file name, then +added −removed. Each opens the lens on its diff. */
+.changed {
+  margin-top: 10px;
+}
+.eyebrow {
+  margin: 0 0 3px;
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
+.files {
+  margin: 0 0 0 -6px;
+  padding: 0;
+  list-style: none;
+}
+.file {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  color: var(--ink-2);
+  transition:
+    color var(--t-fast) var(--ease-out),
+    background-color var(--t-fast) var(--ease-out);
+}
+.file:hover {
+  color: var(--ink);
+  background: var(--paper-lift);
+}
+/* The list sits flush in a clipped panel: draw the focus ring inside the row. */
+.file:focus-visible {
+  outline-offset: -2px;
+}
+.fileName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.fileNew {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.counts {
+  flex: none;
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.plus {
+  color: var(--ok);
+}
+.minus {
+  color: var(--bad);
+}
+.moreFiles {
+  margin: 2px 0 0;
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+}
+
+.actions {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 0 -6px;
+}
+.actions button {
+  font-size: var(--text-xs);
+  color: var(--ink-2);
+  padding: 3px 6px;
+  border-radius: var(--r-sm);
+  transition:
+    color var(--t-fast) var(--ease-out),
+    background-color var(--t-fast) var(--ease-out);
+}
+.actions button:hover {
+  color: var(--ink);
+  background: var(--paper-lift);
+}
+.actions .stop:hover {
+  color: var(--bad);
+  background: var(--bad-wash);
+}
+
+.perm {
+  margin: 2px 0 6px 33px;
+}

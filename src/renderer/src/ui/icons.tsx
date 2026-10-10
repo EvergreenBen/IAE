@@ -69,6 +69,12 @@ export const BackIcon = (p: P) => (
   </Svg>
 );
 
+export const NextIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M6.25 3.5L10.75 8l-4.5 4.5" />
+  </Svg>
+);
+
 export const FileIcon = (p: P) => (
   <Svg {...p}>
     <path d="M4 1.75h5l3 3v9.5H4z" />
@@ -101,6 +107,14 @@ export const ToggleIcon = ({ on, ...p }: P & { on: boolean }) => (
   <Svg {...p}>
     <rect x="1.75" y="4.25" width="12.5" height="7.5" rx="3.75" />
     <circle cx={on ? 10.5 : 5.5} cy="8" r="1.9" fill={on ? 'currentColor' : 'none'} />
+  </Svg>
+);
+
+/** Auto mode: a ring with a yes already in it. */
+export const AutoIcon = (p: P) => (
+  <Svg {...p}>
+    <circle cx="8" cy="8" r="6.25" />
+    <path d="M5.4 8.2l1.8 1.8 3.4-3.6" />
   </Svg>
 );
 

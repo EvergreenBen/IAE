@@ -1,7 +1,7 @@
 // Where a builder's permission prompt shows. On the map it hangs off the
 // builder's token, but only while that token is on screen (clear of the chrome
 // and the conversation); otherwise, or when another builder on the same node
-// already shows one there, it hangs off the builder's mark in the chrome.
+// already shows one there, it hangs off the builder's row in the crew panel.
 import { useEffect, useMemo, useState } from 'react';
 import type { AgentInfo } from '@shared/model';
 import { useIae, type PermissionRequest } from '../state/store';

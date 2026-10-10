@@ -405,6 +405,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The voice picker's name is a word, not a count: room for "System voice". */
+.stepWord {
+  min-width: 92px;
+  font-variant-numeric: normal;
+}
+
 /* New project */
 .newView {
   display: flex;

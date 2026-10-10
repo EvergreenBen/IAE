@@ -1,5 +1,7 @@
 // Top-level composition. There are exactly two places: Home and a Project.
 // A project is one full-bleed architecture map with a few quiet layers on top.
+// The window starts where the work is: a project still open (the window
+// reloaded) or the one that was open when the app last quit, else Home.
 import { useEffect } from 'react';
 import { bridge } from './bridge';
 import { useIae } from './state/store';
@@ -15,8 +17,12 @@ export function App() {
   useEffect(() => {
     void bridge.getSettings().then((settings) => useIae.setState({ settings }));
     void bridge.getHome().then((h) => useIae.setState({ claude: h.claude, claudeDetail: h.claudeDetail }));
+    const home = () => useIae.setState((s) => (s.screen === 'boot' ? { screen: 'home' } : {}));
+    bridge.resume().then((snapshot) => !snapshot && home(), home);
   }, []);
 
+  // Only for the moment it takes to ask: the canvas colour, no Home flashing past.
+  if (screen === 'boot') return null;
   if (screen === 'home') return <Home />;
 
   return (

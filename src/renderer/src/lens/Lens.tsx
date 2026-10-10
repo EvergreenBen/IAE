@@ -1,6 +1,7 @@
 // The lens: a sheet that rises over the map when you open a file. Read and
-// edit the code (or the .env as rows), switch to what it means, or ask the
-// lead to change it. Esc closes it and leaves the camera where it was.
+// edit the code (or the .env as rows), see what changed since the last commit,
+// switch to what it means, or ask the lead to change it. Esc closes it and
+// leaves the camera where it was.
 import { ownerOf } from '@shared/map';
 import type { FileContent } from '@shared/model';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
@@ -14,15 +15,17 @@ import { NodeMark } from '../ui/NodeMark';
 import { Segmented } from '../ui/Segmented';
 import { AskBar } from './AskBar';
 import { CodeView } from './CodeView';
-import { registerLensCloser } from './control';
+import { registerLensCloser, takeChangesRequest, wantsChanges } from './control';
+import { DiffView } from './DiffView';
 import { EnvEditor } from './EnvEditor';
 import { detectEol, fromLf, toLf, type Eol } from './eol';
 import { isEnvFile, wrapsByDefault } from './languages';
 import { Meaning } from './Meaning';
+import { hasChanges, useDiff } from './useDiff';
 import { rememberWrap, wrapFor } from './wrapPref';
 import s from './Lens.module.css';
 
-type Mode = 'code' | 'meaning';
+type Mode = 'code' | 'changes' | 'meaning';
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 export function Lens() {
@@ -49,7 +52,7 @@ function LensSheet({ path }: { path: string }) {
   const [flash, setFlash] = useState<'saved' | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | { then: () => void }>(null);
-  const [mode, setMode] = useState<Mode>(() => (useIae.getState().meaning ? 'meaning' : 'code'));
+  const [mode, setMode] = useState<Mode>(() => (wantsChanges(path) && !isEnvFile(path) ? 'changes' : useIae.getState().meaning ? 'meaning' : 'code'));
   /** Soft wrap chosen in this lens; null follows the remembered default for this kind of file. */
   const [wrapChoice, setWrapChoice] = useState<boolean | null>(null);
   const [agentNote, setAgentNote] = useState<{ name: string; hue: number } | null>(null);
@@ -122,13 +125,23 @@ function LensSheet({ path }: { path: string }) {
     };
   }, [load]);
 
-  // Follow ⌘M while open.
-  const firstMeaning = useRef(true);
+  // Start on the changes when the crew list asked for them; another file leaves them.
+  const modePath = useRef(path);
   useEffect(() => {
-    if (firstMeaning.current) {
-      firstMeaning.current = false;
-      return;
-    }
+    if (takeChangesRequest(path) && !isEnvFile(path)) setMode('changes');
+    else if (modePath.current !== path) setMode((m) => (m === 'changes' ? 'code' : m));
+    modePath.current = path;
+  }, [path]);
+
+  // Since the last commit: fetched on open, when the view comes up, and when an agent edits the file. Never for .env (its values stay masked).
+  const editedAt = touch && touch.action !== 'read' ? touch.at : 0;
+  const diff = useDiff(path, !isEnvFile(path), `${editedAt}:${mode === 'changes'}`);
+
+  // Follow ⌘M while open: only a real toggle (StrictMode runs effects twice on mount, which mustn't reset the view).
+  const lastMeaning = useRef(meaningMode);
+  useEffect(() => {
+    if (lastMeaning.current === meaningMode) return;
+    lastMeaning.current = meaningMode;
     setMode(meaningMode ? 'meaning' : 'code');
   }, [meaningMode]);
 
@@ -238,6 +251,8 @@ function LensSheet({ path }: { path: string }) {
   let body: ReactNode = null;
   if (mode === 'meaning') {
     body = <Meaning path={path} nodeId={nodeId} onGoto={goNode} />;
+  } else if (mode === 'changes') {
+    body = <DiffView path={path} language={file?.language} state={diff} />;
   } else if (loadError) {
     body = (
       <div className={s.calm}>
@@ -338,6 +353,7 @@ function LensSheet({ path }: { path: string }) {
             onChange={setMode}
             options={[
               { value: 'code', label: env ? 'Values' : 'Code' },
+              ...(mode === 'changes' || hasChanges(diff) ? [{ value: 'changes' as const, label: 'Changes', hint: 'What changed since the last commit' }] : []),
               { value: 'meaning', label: 'Meaning', hint: `What this file is for (${IS_MAC ? '⌘' : 'Ctrl+'}M everywhere)` },
             ]}
           />

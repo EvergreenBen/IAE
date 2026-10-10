@@ -3,7 +3,7 @@
 // side with a thin leader. Every other open item is a small accent dot.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import type { AgendaItem } from '@shared/model';
+import { DEFAULT_SETTINGS, type AgendaItem } from '@shared/model';
 import { CrewMark } from '../avatar/CrewMark';
 import { bridge } from '../bridge';
 import { ui, useIae } from '../state/store';
@@ -17,6 +17,8 @@ import { withCaption } from './layoutTypes';
 import { useMapLocal } from './mapStore';
 import { anchorPoint, cardRect, cardW, estimateCardH, HEAD, NOTCH, place, type Placement } from './questionPlace';
 import s from './Questions.module.css';
+
+const leadNameOf = () => useIae.getState().settings.leadName || DEFAULT_SETTINGS.leadName;
 
 /** Edge polylines as thin rects (one per segment), for placement to keep clear of. */
 function segmentRects(pts: { x: number; y: number }[]): Rect[] {
@@ -71,6 +73,7 @@ export function Questions() {
   const cam = useCamera();
   const [settled, setSettled] = useState(0);
   useEffect(() => cam?.onSettle(() => setSettled((n) => n + 1)), [cam]);
+  useEffect(() => cam?.onCorner(() => setSettled((n) => n + 1)), [cam]);
 
   // The card's real height (card px) in each layout, once it has rendered; an estimate until then.
   const [measured, setMeasured] = useState<Record<string, number>>({});
@@ -91,8 +94,9 @@ export function Questions() {
   const panned = useRef(new Set<string>());
   const placement = useMemo(() => {
     if (!active || !layout || busy) return null;
-    // Files are things you click: a card never covers them either.
-    const nodes = [...Object.values(layout.nodes).filter((n) => n.id !== active.at.id).map(withCaption), ...layout.tiles, ...layout.shelf];
+    // Files are things you click: a card never covers them either. Nor does it hide under the crew list.
+    const crew = cam?.cornerWorld();
+    const nodes = [...Object.values(layout.nodes).filter((n) => n.id !== active.at.id).map(withCaption), ...layout.tiles, ...layout.shelf, ...(crew ? [crew] : [])];
     const head = layout.frame ? [{ x: layout.frame.x, y: layout.frame.y, w: layout.frame.w, h: 72 }] : [];
     const soft: Rect[] = [...layout.stubs, ...head, ...layout.edges.flatMap((e) => (e.label ? [e.label] : []))];
     const lines = layout.edges.flatMap((e) => segmentRects(e.pts));
@@ -297,11 +301,12 @@ function Card({
               <button
                 type="button"
                 className={s.later}
+                title="Put it off: it comes back when it matters"
                 onClick={() => useMapLocal.setState((st) => ({ later: [...st.later.filter((x) => x !== item.id), item.id], pinnedAgenda: st.pinnedAgenda === item.id ? null : st.pinnedAgenda }))}
               >
                 later
               </button>
-              <button type="button" className={s.close} aria-label="Dismiss" title="Dismiss" onClick={() => void bridge.dismiss(item.id)}>
+              <button type="button" className={s.close} aria-label="Drop this question" title="Drop this question" onClick={() => void bridge.dismiss(item.id)}>
                 <Mark name="cross" size={11} />
               </button>
             </span>
@@ -314,7 +319,7 @@ function Card({
           {options.length > 0 && (
             <div className={s.options}>
               {options.map((o, i) => (
-                <button key={o} type="button" className={s.option} data-rec={i === 0 || undefined} onClick={() => void bridge.answer(item.id, o)}>
+                <button key={o} type="button" className={s.option} data-rec={i === 0 || undefined} title={i === 0 ? `${leadNameOf()}'s pick` : undefined} onClick={() => void bridge.answer(item.id, o)}>
                   {o}
                 </button>
               ))}

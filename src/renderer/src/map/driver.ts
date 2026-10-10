@@ -30,7 +30,9 @@ export class Driver {
   private disposed = false;
   private relayoutQueued = false;
 
-  constructor(private cam: Camera) {}
+  constructor(private cam: Camera) {
+    cam.onCorner((arrived) => arrived && this.clearCorner());
+  }
 
   dispose() {
     this.disposed = true;
@@ -67,7 +69,7 @@ export class Driver {
     }
   }
 
-  private fitView(l: ScopeLayout): View {
+  private fitView(l: ScopeLayout, clearCorner = true): View {
     if (!l.bounds) return this.cam.centerOn(0, 0, 1);
     let b = l.bounds;
     // A question about something in this scope sits in the right margin when the
@@ -76,7 +78,7 @@ export class Driver {
     const right = Math.max(b.x + b.w, ...l.stubs.map((s) => s.x + s.w));
     b = { ...b, x: left, w: right - left };
     if (l.frame && this.questionInside(l.scopeId)) b = { ...b, w: b.w + QUESTION_MARGIN };
-    return this.cam.fit(b, l.frame ? 1.1 : 1.15);
+    return this.cam.fit(b, l.frame ? 1.1 : 1.15, clearCorner);
   }
 
   /** An open question in this scope that would show as a card (one put off with "later" doesn't need room). */
@@ -355,6 +357,24 @@ export class Driver {
     const v = this.cam.view;
     if (Math.abs(to.k - v.k) / v.k < 0.03 && Math.abs(to.x - v.x) < 24 && Math.abs(to.y - v.y) < 24) return;
     void this.cam.fly(to, 640);
+  }
+
+  /**
+   * A builder joined the crew list and the list now covers the scope: slide the
+   * scope out from under it. Only from the default framing, and only when the
+   * user isn't steering; a view they chose stays put.
+   */
+  private clearCorner() {
+    const shown = useMapLocal.getState().shown;
+    if (shown === undefined || this.running) return;
+    if (performance.now() - this.cam.lastUserMove < AUTO_FIT_IDLE) return;
+    const L = useMapLocal.getState().layouts[scopeKey(shown)];
+    if (!L?.bounds || !this.cam.underCorner(L.bounds)) return;
+    const v = this.cam.view;
+    const near = (a: View) => Math.abs(a.k - v.k) / v.k < 0.03 && Math.abs(a.x - v.x) < 24 && Math.abs(a.y - v.y) < 24;
+    if (!near(this.fitView(L, false))) return;
+    const to = this.fitView(L);
+    if (!near(to)) void this.cam.fly(to, 640);
   }
 
   /** The window changed size: keep the scope framed unless the user has been steering. */

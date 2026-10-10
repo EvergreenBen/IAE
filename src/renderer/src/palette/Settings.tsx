@@ -5,16 +5,40 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { bridge } from '../bridge';
 import { useIae } from '../state/store';
-import { MinusIcon, PlusIcon } from '../ui/icons';
+import { BackIcon, MinusIcon, NextIcon, PlusIcon } from '../ui/icons';
+import { DEFAULT_KOKORO_VOICE, KOKORO_VOICES, SYSTEM_VOICE, voiceChoice } from '../voice/kokoroConfig';
+import { tts } from '../voice/tts';
 import s from './Palette.module.css';
 
-const AUTONOMY: { value: Autonomy; label: string; hint: string }[] = [
+/**
+ * One choice for how much builders ask. "Never ask" is Auto (the switch at the
+ * top right): it says yes to every request, so the older "full autonomy"
+ * setting shows as it too.
+ */
+type AskLevel = Autonomy | 'never';
+const AUTONOMY: { value: AskLevel; label: string; hint: string }[] = [
   { value: 'ask', label: 'Ask first', hint: 'Builders ask before they change a file or run a command.' },
-  { value: 'edits', label: 'Edit files freely', hint: 'Builders change files on their own, and ask before running a command.' },
-  { value: 'full', label: 'Full autonomy', hint: 'Builders never stop to ask. Best on a branch you can throw away.' },
+  { value: 'edits', label: 'Ask before commands', hint: 'Builders change files on their own, and ask before running a command.' },
+  { value: 'never', label: 'Never ask (Auto)', hint: 'Builders go ahead without stopping. Best in a git repo, where every change can be undone.' },
 ];
 
+const askLevel = (st: SettingsT): AskLevel => (st.autoApprove || st.autonomy === 'full' ? 'never' : st.autonomy);
+
+function askPatch(level: AskLevel): Partial<SettingsT> {
+  return level === 'never' ? { autoApprove: true } : { autonomy: level, autoApprove: false };
+}
+
 const MAX_BUILDERS = 8;
+
+/** Archie's voices, in the order the picker steps through them. */
+const VOICES: { id: string; name: string }[] = [...KOKORO_VOICES, { id: SYSTEM_VOICE, name: 'System voice' }];
+
+function voiceIndex(setting: string): number {
+  const choice = voiceChoice(setting);
+  const id = choice.engine === 'kokoro' ? choice.voice : SYSTEM_VOICE;
+  const i = VOICES.findIndex((v) => v.id === id);
+  return i >= 0 ? i : VOICES.findIndex((v) => v.id === DEFAULT_KOKORO_VOICE);
+}
 
 export function SettingsView() {
   const settings = useIae((st) => st.settings);
@@ -24,6 +48,14 @@ export function SettingsView() {
     const next = await bridge.setSettings(patch);
     useIae.setState({ settings: next });
     setSaved(Date.now());
+  };
+
+  const voiceAt = voiceIndex(settings.voice.ttsVoice);
+  const stepVoice = (by: number) => {
+    const next = VOICES[(voiceAt + by + VOICES.length) % VOICES.length];
+    void save({ voice: { ...settings.voice, ttsVoice: next.id } });
+    // Hear it straight away.
+    tts.preview(`Hi, I'm ${settings.leadName || 'Archie'}.`, next.id);
   };
 
   useEffect(() => {
@@ -55,10 +87,10 @@ export function SettingsView() {
       </Field>
 
       <div className={s.fieldBlock}>
-        <span className={s.fieldLabel}>Autonomy</span>
-        <div className={s.choices} role="radiogroup" aria-label="Autonomy">
+        <span className={s.fieldLabel}>Builders ask</span>
+        <div className={s.choices} role="radiogroup" aria-label="When builders ask">
           {AUTONOMY.map((a) => {
-            const on = settings.autonomy === a.value;
+            const on = askLevel(settings) === a.value;
             return (
               <button
                 key={a.value}
@@ -66,7 +98,7 @@ export function SettingsView() {
                 role="radio"
                 aria-checked={on}
                 className={on ? `${s.choice} ${s.choiceOn}` : s.choice}
-                onClick={() => !on && void save({ autonomy: a.value })}
+                onClick={() => !on && void save(askPatch(a.value))}
               >
                 <span className={s.radio} aria-hidden="true" />
                 <span className={s.choiceText}>
@@ -101,6 +133,20 @@ export function SettingsView() {
             onClick={() => void save({ maxBuilders: Math.min(MAX_BUILDERS, settings.maxBuilders + 1) })}
           >
             <PlusIcon size={13} />
+          </button>
+        </div>
+      </Field>
+
+      <Field label="Voice" hint={`How ${settings.leadName || 'Archie'} sounds. Runs on this Mac, offline.`}>
+        <div className={s.stepper}>
+          <button type="button" className={s.stepBtn} aria-label="Previous voice" onClick={() => stepVoice(-1)}>
+            <BackIcon size={13} />
+          </button>
+          <span className={`${s.stepValue} ${s.stepWord}`} aria-live="polite">
+            {VOICES[voiceAt].name}
+          </span>
+          <button type="button" className={s.stepBtn} aria-label="Next voice" onClick={() => stepVoice(1)}>
+            <NextIcon size={13} />
           </button>
         </div>
       </Field>

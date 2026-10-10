@@ -18,7 +18,7 @@ const EMPTY_ORDER: SectionId[] = ['commands', 'nodes', 'claude', 'projects'];
 const LIMIT: Record<SectionId, number> = { commands: 9, nodes: 6, files: 7, claude: 6, projects: 3 };
 const EMPTY_LIMIT: Record<SectionId, number> = { commands: 9, nodes: 6, files: 0, claude: 4, projects: 3 };
 
-export type IconName = 'plus' | 'folder' | 'meaning' | 'speak' | 'mic' | 'transcript' | 'settings' | 'exit' | 'slash' | 'chat';
+export type IconName = 'plus' | 'folder' | 'meaning' | 'speak' | 'mic' | 'auto' | 'transcript' | 'settings' | 'exit' | 'slash' | 'chat';
 
 export interface PaletteItem {
   id: string;

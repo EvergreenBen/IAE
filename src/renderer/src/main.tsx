@@ -4,8 +4,12 @@ import './styles/global.css';
 import { App } from './App';
 import { bridge, wireBridge } from './bridge';
 import { applyEvent, ui, useIae } from './state/store';
+import { reloadWhenQuiet } from './devReload';
 
 wireBridge();
+
+// Dev: a reload that a builder's edit forces waits until nobody is talking (scripts/vite-quiet-reload.ts).
+if (import.meta.hot) import.meta.hot.on('arxitect:reload', () => reloadWhenQuiet());
 
 // Dev/audit handle: window.__iae.{useIae, ui, bridge, applyEvent}. URL params drive the
 // mock in browser mode: ?open=sample opens the sample project, ?new=Name

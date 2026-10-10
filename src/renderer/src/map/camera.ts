@@ -43,6 +43,9 @@ export class Camera {
   private layers = new Map<string, LayerEntry>();
   private listeners = new Set<Listener>();
   private settleListeners = new Set<() => void>();
+  private cornerListeners = new Set<(arrived: boolean) => void>();
+  /** Screen space the crew list takes in the top-left corner (its right and bottom edges), when it shows. */
+  private corner: { w: number; h: number } | null = null;
   private flight = 0;
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
   private moving = false;
@@ -50,7 +53,7 @@ export class Camera {
   locked = false;
   /** Last time the user moved the camera themselves. */
   lastUserMove = 0;
-  /** Infinite dot grid: absolute zoom factor and grid origin in base-world coordinates. */
+  /** Infinite graph-paper grid: absolute zoom factor and grid origin in base-world coordinates. */
   private grid = { z: 1, ox: 0, oy: 0 };
   private gridEls: [HTMLElement | null, HTMLElement | null] = [null, null];
 
@@ -109,6 +112,39 @@ export class Camera {
   onSettle(f: () => void): () => void {
     this.settleListeners.add(f);
     return () => this.settleListeners.delete(f);
+  }
+
+  /**
+   * The crew list's footprint (null when it's gone). Fitting keeps the map out
+   * from under it; `arrived` (a new agent joined) also asks for room now.
+   */
+  setCorner(c: { w: number; h: number } | null, arrived = false) {
+    const prev = this.corner;
+    const same = c && prev ? Math.round(c.w) === Math.round(prev.w) && Math.round(c.h) === Math.round(prev.h) : c === prev;
+    this.corner = c;
+    if (!same || arrived) for (const f of this.cornerListeners) f(arrived && !!c);
+  }
+
+  /** The crew list moved, grew or went (`arrived`: because a new agent joined). */
+  onCorner(f: (arrived: boolean) => void): () => void {
+    this.cornerListeners.add(f);
+    return () => this.cornerListeners.delete(f);
+  }
+
+  /** The crew list's footprint in base-world units, for things placed on the map to keep clear of. */
+  cornerWorld(): Rect | null {
+    const c = this.corner;
+    if (!c) return null;
+    const { k, x, y } = this.view;
+    return { x: -x / k, y: -y / k, w: c.w / k, h: c.h / k };
+  }
+
+  /** Does `r` (world) sit under the crew list right now? */
+  underCorner(r: Rect): boolean {
+    const c = this.corner;
+    if (!c) return false;
+    const s = this.toScreen(r);
+    return s.x < c.w && s.y < c.h && s.x + s.w > 0 && s.y + s.h > 0;
   }
 
   size(): { w: number; h: number } {
@@ -183,7 +219,7 @@ export class Camera {
     const oy = y + k * this.grid.oy;
     const fade = clamp((k - 0.28) / 0.35, 0, 1);
     a.style.backgroundSize = `${big}px ${big}px`;
-    // Offset by half a cell so dots sit on the lattice points and both scales coincide.
+    // Offset by half a cell so rules run through the lattice points and both scales coincide.
     a.style.backgroundPosition = `${ox - big / 2}px ${oy - big / 2}px`;
     a.style.opacity = String(fade);
     b.style.backgroundSize = `${big / 2}px ${big / 2}px`;
@@ -245,15 +281,25 @@ export class Camera {
     this.flight++;
   }
 
-  /** Camera that fits `r` inside the safe area (clear of chrome and intent line). */
-  fit(r: Rect, maxK = 1.15): View {
+  /**
+   * Camera that fits `r` inside the safe area (clear of chrome and intent line).
+   * When the crew list would cover it, the area starts beside or below the list,
+   * whichever leaves the map bigger.
+   */
+  fit(r: Rect, maxK = 1.15, clearCorner = true): View {
     const { w, h } = this.size();
-    const aw = Math.max(80, w - FIT_PAD.side * 2);
-    const ah = Math.max(80, h - FIT_PAD.top - FIT_PAD.bottom);
-    const k = Math.min(maxK, aw / Math.max(1, r.w), ah / Math.max(1, r.h));
-    const cx = r.x + r.w / 2;
-    const cy = r.y + r.h / 2;
-    return { k, x: FIT_PAD.side + aw / 2 - cx * k, y: FIT_PAD.top + ah / 2 - cy * k };
+    const within = (x0: number, y0: number): View => {
+      const aw = Math.max(80, w - x0 - FIT_PAD.side);
+      const ah = Math.max(80, h - y0 - FIT_PAD.bottom);
+      const k = Math.min(maxK, aw / Math.max(1, r.w), ah / Math.max(1, r.h));
+      return { k, x: x0 + aw / 2 - (r.x + r.w / 2) * k, y: y0 + ah / 2 - (r.y + r.h / 2) * k };
+    };
+    const plain = within(FIT_PAD.side, FIT_PAD.top);
+    const c = clearCorner ? this.corner : null;
+    if (!c || plain.x + r.x * plain.k >= c.w || plain.y + r.y * plain.k >= c.h) return plain;
+    const beside = within(Math.max(FIT_PAD.side, c.w + 16), FIT_PAD.top);
+    const below = within(FIT_PAD.side, Math.max(FIT_PAD.top, c.h + 12));
+    return beside.k >= below.k ? beside : below;
   }
 
   /** Camera centred on a world point (in the safe area) at zoom k. */

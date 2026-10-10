@@ -11,6 +11,7 @@ import { closeLensThen } from '../lens/control';
 import { applyEvent, ui, useIae } from '../state/store';
 import { ESC, isMod, onEscape } from '../ui/escape';
 import {
+  AutoIcon,
   BackIcon,
   ChatIcon,
   ExitIcon,
@@ -39,6 +40,7 @@ const ICONS: Record<IconName, (p: { size?: number }) => ReactNode> = {
   meaning: MeaningIcon,
   speak: SpeakerIcon,
   mic: MicIcon,
+  auto: AutoIcon,
   transcript: TranscriptIcon,
   settings: SettingsIcon,
   exit: ExitIcon,

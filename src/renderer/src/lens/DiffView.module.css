@@ -1,0 +1,33 @@
+/* The Changes view: a one-line tally over the file with its changes marked. */
+.wrap {
+  /* The band behind each hunk's "Line 40 · function" header: recessed, like a well. */
+  --hunk-band: color-mix(in srgb, var(--paper-sunk) 72%, transparent);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.summary {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 28px 0 24px;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+.added {
+  color: var(--ok);
+}
+
+.removed {
+  color: var(--bad);
+}
+
+.code {
+  flex: 1;
+  min-height: 0;
+}
