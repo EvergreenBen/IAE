@@ -26,9 +26,9 @@ draw of itself.
 │  store.ts (zustand) ◀── reduce(EngineEvent)                                      │
 │  map/  camera · ELK layout · nodes · edges · files · agents · ghosts · questions │
 │  conversation/  intent line · caption · transcript · lexicon autocomplete        │
-│  voice/  STT worker (Whisper, WebGPU/wasm) · VAD · TTS (speechSynthesis)         │
+│  voice/  STT worker (Whisper) · TTS worker (Kokoro) · VAD · WebGPU/wasm          │
 │  avatar/  Archie + crew tokens                                                   │
-│  lens/  CodeMirror file view · .env editor · meaning                            │
+│  lens/  CodeMirror file view · changes (git diff) · .env editor · meaning        │
 │  home/ · palette/                                                                │
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -108,9 +108,32 @@ its constructor by `src/main/index.ts`.
   paths) and an `agent/upsert` carrying `activity` ("Editing session.ts"),
   `file` and `nodeId` (`ownerOf(map, path)`, keeping the previous node when
   it's unowned).
+- **What a builder changed** (`changes.ts`): each Edit, MultiEdit, Write or
+  NotebookEdit `tool_use` is held by its id until its `tool_result` comes back.
+  An error counts nothing. Otherwise the lines added and removed come from
+  Claude Code's own `structuredPatch` on the result (`tool_use_result`), or,
+  failing that, from the call itself: `old_string` → `new_string` (a bounded
+  Myers line diff, times the occurrences for `replace_all`), or for a Write
+  over an existing file, the file as it was when the call arrived. Totals per
+  file ride on `AgentInfo.changes` (newest first, at most 100), so they travel
+  with `agent/upsert` and the snapshot, survive a window reload, and are saved
+  with the job, so a resumed builder keeps counting. A finished job that
+  changed files stays on the crew list for review (up to four, oldest first)
+  until `clearAgent`. The crew list shows them, and the lens asks `diffFile(path)` for
+  the real thing: `git/diffFile` runs `git diff --no-color --no-ext-diff -U3
+  HEAD -- <path>` with `execFile` in the project root (never a shell), with
+  literal pathspecs, no optional locks and paths kept inside the project
+  (`resolveInside`), and parses it into hunks (`parseUnifiedDiff`, pure). An
+  untracked file, or a repository with no commits yet, is all added. Outside
+  git it returns `null`.
 - Builders get a small `iae` MCP server: `map_update` (add nodes and claim paths
-  so the map stays truthful) and `ask_architect` (raise a question through the
-  lead's agenda; `blocking: true` waits for the answer).
+  so the map stays truthful), `ask_architect` (raise a question through the
+  lead's agenda; `blocking: true` waits for the answer) and `progress` (their
+  plan as 3–7 steps, then `done: n` as each finishes). `progress.ts` folds the
+  reports into `AgentInfo.progress` (steps, done, the time the finished steps
+  took, when the current one began); a `TodoWrite` call counts too. The
+  renderer's crew list estimates time left from it (`map/crewTime.ts`), and the
+  lead's crew lines carry the step and minutes in.
 - On finish: the status becomes `done`/`failed` and `result` is the final
   summary. The node's status becomes `built` (or `broken`), counted per node so
   that parallel builders don't fight over it. Scouts and slash commands never
@@ -121,6 +144,33 @@ its constructor by `src/main/index.ts`.
   as `starting`).
 - Builder names come from a pool (Ada, Kit, Rho, Juno, Max, Bea, Lev, Ivy). The
   hue is the pool index modulo 6.
+
+### Continuity: reloads, restarts and building Arxitect with itself
+
+- **A window reload never stops anything.** The engine keeps the project open;
+  the renderer starts on a blank `boot` screen and calls `resume()`, which
+  re-sends `project/opened` with a snapshot that also carries each agent's
+  recent steps and the permission requests still waiting. In `npm run dev`, a
+  full reload forced by a builder's edit waits for a quiet moment (nobody
+  talking, no reply under way, nothing half typed):
+  `scripts/vite-quiet-reload.ts` turns Vite's `full-reload` into an
+  `arxitect:reload` message that `src/renderer/src/devReload.ts` acts on.
+  Hot-swappable edits still apply at once.
+- **Builders survive the app.** Every job is saved to `.iae/crew.json` with its
+  Claude Code session id and progress (`crew-persist.ts`). Closing the project
+  never marks them stopped, so on the next open unfinished jobs resume their
+  session (`resume: sessionId`, told the app restarted) or start over from the
+  brief if they never got one.
+- **The last project reopens.** `<userData>/session.json` holds the project
+  open at quit (or when the window closed); `resume()` reopens it. Closing a
+  project yourself clears it.
+- **Restarting to load new code.** `npm run dev` is `scripts/dev.mjs`, which
+  runs `electron-vite dev` and runs it again whenever the app exits with code
+  75. With that supervisor present, `selfwatch.ts` watches the app's own
+  `src/main`, `src/preload`, `src/shared`, `package.json` and Vite config, and
+  `app/stale` puts **Restart to load changes** in the chrome. `restartApp()`
+  shuts the engine down cleanly (jobs saved), then exits with 75 (or, outside
+  the supervisor, relaunches).
 
 ### Cartographer
 
@@ -171,8 +221,11 @@ builder question is typically spoken 3–6s after it is raised.
 | `transcript.jsonl` | one `TranscriptEntry` per line |
 | `notes.json` | `{ [path]: note }`, one-line file meanings |
 | `state.json` | `{ leadSessionId, cartographedAt, createdAt }` |
+| `crew.json` | `SavedJob[]`: each builder or scout job, its session id and progress |
 
-App-level: `<userData>/recent.json` and `<userData>/settings.json`.
+App-level: `<userData>/recent.json`, `<userData>/settings.json` and
+`<userData>/session.json` (the project to reopen at launch).
+`ARXITECT_USER_DATA` points userData elsewhere (test runs).
 
 ## Packaging
 
@@ -189,11 +242,35 @@ them on first use.
 - **STT**: Whisper (`onnx-community/whisper-base.en` by default) via
   `@huggingface/transformers` in a Web Worker. It uses WebGPU when available,
   and wasm otherwise. Audio comes from an `AudioWorklet` at 16kHz mono. An
-  energy-based VAD with hysteresis decides when speech ends in hands-free mode.
-  Push-to-talk (hold Space) is always available. Interim transcripts run
-  roughly every 1s on the growing buffer and feed `draft()`.
-- **TTS**: `speechSynthesis` with the best installed voice (Premium/Enhanced
-  first). Speech is chunked by sentence as `lead/delta` streams. Barge-in calls
-  `speechSynthesis.cancel()` and `bridge.interrupt()`.
+  energy-based VAD with hysteresis decides when speech starts, pauses and ends
+  in hands-free mode. At a pause (160ms of silence) the speech so far is
+  transcribed straight away; if the person doesn't carry on, that transcript
+  is the final one, so it's ready when the turn ends. It also sets the end of
+  the turn (`turnEndMs`): ~0.45s after a question, ~0.5s after a finished
+  sentence, ~1.3s after "and…". Push-to-talk (hold Space) is always
+  available. Interim transcripts run roughly every 1s on the growing buffer
+  and feed `draft()`. Each spoken turn logs one `[voice:turn]` line: stop →
+  text, sent, first words, voice.
+- **Talking over Archie**: while a reply is under way (`tts.onActive`, gaps
+  between sentences included) the mic compares itself with what Kokoro is
+  playing (`ClipPlayer.levelAt`, the loudest 20ms of the last 300ms) times a
+  learned echo gain (`EchoModel`), and speech must stand 2.5× clear of that
+  to count. A start over Archie ducks him to 30%; 320ms of speech, or real
+  words in the transcript, confirms it and barges in; otherwise he carries
+  on. The system voice has no reference, so it gates new utterances instead.
+- **TTS**: Kokoro-82M via `kokoro-js` (on transformers.js) in a second Web
+  Worker, WebGPU fp32 only (about 12ms per character; fp16 produces NaNs, and
+  wasm runs 1.5× slower than real time, so without WebGPU the system voice
+  speaks). It loads when a project opens. Speech is chunked by sentence as
+  `lead/delta` streams; the first chunk is cut at about 48 characters, at a
+  comma or before a joining word, so sound starts sooner. The worker turns
+  chunks into 24kHz clips in order, and the renderer schedules them back to
+  back on the AudioContext clock (no gaps, and no reliance on `ended` events,
+  which can arrive seconds late). Mouth pulses come from loudness peaks in
+  each clip. `speechSynthesis` (best installed voice)
+  stands in when Kokoro can't run, when the user picks it, or for a reply that
+  starts more than 3s before Kokoro is ready. A run of speech never switches
+  voice mid-reply. Barge-in stops playback, drops the worker's queue, cancels
+  `speechSynthesis` and calls `bridge.interrupt()`.
 - Models download on first use, or ahead of time with `npm run voice:setup`.
   The renderer CSP allows huggingface.co for that.

@@ -24,6 +24,9 @@ Read these before making product or design decisions:
 1. **The map is the interface.** There are no panels, sidebars or file trees.
    Files live *inside* the nodes that own them. To find `.env` you open Backend,
    then Config, and the file is there. Everything has a place you can point at.
+   The one exception is the crew list at the top left: a quiet row per agent at
+   work (what it's doing, a progress bar, roughly how long is left), because
+   "how close is it?" is the question people ask most.
 2. **Quiet by default.** A dark canvas, light ink, and one bright blue accent.
    Geometry is circular — discs and rings, never rounded squares. Show as little
    text as possible. If something needs the user, it appears *where it applies*
@@ -45,18 +48,20 @@ Read these before making product or design decisions:
 
 Electron 44 · electron-vite 5 · React 19 · TypeScript · zustand · d3-zoom ·
 elkjs · motion · CodeMirror 6 · `@anthropic-ai/claude-agent-sdk` ·
-`@huggingface/transformers` (on-device speech-to-text) · CSS Modules + tokens.
+`@huggingface/transformers` (on-device speech-to-text) · `kokoro-js` (on-device
+voice) · CSS Modules + tokens.
 
 ## Commands
 
 ```bash
 npm install
-npm run dev          # desktop app with hot reload (real Claude via your Claude Code login)
+npm run dev          # desktop app with hot reload (real Claude via your Claude Code login);
+                     # restarts itself when asked, so Arxitect can build Arxitect
 npm run web          # renderer only, in a browser, against the mock engine → http://localhost:5199
 npm run build        # production bundle into out/
 npm run typecheck    # both tsconfigs (node + web)
 npm test             # vitest (shared/ + engine pure logic)
-npm run voice:setup  # optional: pre-download the speech model for offline voice
+npm run voice:setup  # optional: pre-download the voice models (Whisper + Kokoro) for offline voice
 npm run package      # release/mac-arm64/Arxitect.app (unsigned, local use)
 ```
 
@@ -91,7 +96,7 @@ src/
     bridge/           window.iae or the mock (browser dev)
     map/              the architecture canvas: camera, layout, nodes, edges, agents, questions
     conversation/     intent line, captions, ghost autocomplete, turn-taking
-    voice/            speech-to-text worker, VAD, text-to-speech
+    voice/            speech-to-text and voice (Kokoro) workers, VAD, playback
     avatar/           Archie: the companion and its states
     lens/             focused file/node view (read, edit, explain)
     home/             project picker
@@ -140,5 +145,10 @@ Per-project state lives in the user's project at `<project>/.iae/`
   scorecards (see `docs/CONVERSATION.md` for the bar).
 - Real app: `npm run build`, then `scripts/shoot-electron.mjs` drives the built
   app with Playwright and screenshots it.
+- Voice: `npm run build`, then `node scripts/voice-electron.mjs [turns|bargein|echo]`
+  talks to the built app through a synthetic mic (macOS `say`) and logs a
+  `[voice:turn]` timing line per turn. Run it before and after any change to
+  turn-taking, speech or the lead's latency; `--echo 0.5` checks Archie never
+  interrupts himself.
 - Before calling a UI change done, look at a screenshot. Check it against
   `docs/DESIGN.md`.

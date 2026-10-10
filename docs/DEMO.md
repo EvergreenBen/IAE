@@ -7,16 +7,15 @@ the map follows, no one ever waits, and you know where everything lives.
 
 ```bash
 npm install
-npm run voice:setup     # optional, ~270MB: on-device speech-to-text, works offline
+npm run voice:setup     # optional, ~700MB: speech-to-text and Archie's voice, offline
 npm run dev
 ```
 
 You need Claude Code installed and signed in. If `claude` works in a terminal,
 Arxitect works.
 
-For the best voice, download a premium system voice: System Settings →
-Accessibility → Spoken Content → System voice → Manage voices → English →
-**Ava (Premium)** or **Zoe (Premium)**. Arxitect picks it up automatically.
+Archie speaks with Kokoro, on-device. Run `voice:setup` before a demo so the
+voice is there from the first sentence instead of downloading mid-demo.
 
 ## 1. A blank page becomes an architecture (about 2 minutes)
 

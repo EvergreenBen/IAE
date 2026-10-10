@@ -29,8 +29,8 @@ You need Claude Code installed and signed in (`claude` works in your terminal),
 or `ANTHROPIC_API_KEY` set.
 
 Voice is optional. Hold **Space** to talk, or switch on hands-free from ⌘K.
-Speech-to-text runs on-device (Whisper). It downloads on first use, or ahead of
-time with `npm run voice:setup`.
+Speech-to-text (Whisper) and Archie's voice (Kokoro) both run on-device. They
+download on first use, or ahead of time with `npm run voice:setup`.
 
 `npm run web` runs the interface in a browser against a simulated engine, which
 is useful for design work. `npm run package` builds a standalone `Arxitect.app`
