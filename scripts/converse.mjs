@@ -15,6 +15,8 @@
 //                                                 # (--grow-only: just the growing utterance; --no-grow: skip it)
 //   node scripts/converse.mjs rename              # lead renamed in Settings mid-session
 //   node scripts/converse.mjs recall              # talk past an open card (repeats?), then reopen: who decided what
+//   node scripts/converse.mjs flow                # walkthrough, two asks at once, "yeah" = go, restart mid-build
+//                                                 # (--seed DIR: reuse DIR/.iae map + notes instead of waiting for Atlas)
 //   node scripts/converse.mjs climbing --out DIR  # where transcripts go (default: out/converse/<stamp>)
 //
 // The engine is bundled with esbuild (dependencies external) into out/converse/engine-<pid>.mjs.
@@ -204,6 +206,8 @@ class Run {
         n: self.turns.length + 1,
         kind: pending.kind,
         body: pending.body,
+        retry: !!pending.unheard,
+        unheard: pending.unheard,
         startAt: Date.now(),
         sayAt: pending.kind === 'user' ? self.lastSayAt : 0,
         firstDeltaAt: 0,
@@ -226,11 +230,30 @@ class Run {
     const origMsg = lead.onMessage.bind(lead);
     lead.onMessage = (session, m) => {
       const cur = self.cur;
+      if (argv.includes('--raw') && cur) {
+        const ev = m.type === 'stream_event' ? m.event : null;
+        if (ev?.type === 'content_block_start') self.line(`      raw: start ${ev.content_block.type}${ev.content_block.name ? ` ${ev.content_block.name}` : ''}`);
+        else if (ev?.type === 'content_block_delta' && ev.delta.type === 'text_delta') self.line(`      raw: text ${JSON.stringify(ev.delta.text)}`);
+        else if (ev?.type === 'message_start') self.line(`      raw: message ${ev.message.id}`);
+        else if (!ev) self.line(`      raw: ${m.type}${m.subtype ? `/${m.subtype}` : ''}${m.message?.id ? ` ${m.message.id}` : ''}${m.parent_tool_use_id ? ' (sub)' : ''}`);
+        const t = lead.turn;
+        if (t && ev?.type === 'content_block_start') self.line(`      lead: muted=${t.muted} looking=${t.looking} afterTools=${t.afterTools} raw=${JSON.stringify(t.raw.slice(-40))}`);
+      }
       if (cur && m.type === 'assistant' && !m.parent_tool_use_id) {
         for (const b of m.message.content) {
           if (b.type === 'thinking') cur.thinking = (cur.thinking ?? 0) + (b.thinking?.length ?? 0);
           else if (b.type === 'text' && b.text?.trim()) cur.blocks.push({ type: 'text', text: b.text.trim() });
-          else if (b.type === 'tool_use') cur.blocks.push({ type: 'tool', name: b.name.replace('mcp__iae__', ''), input: b.input });
+          else if (b.type === 'tool_use') cur.blocks.push({ type: 'tool', id: b.id, name: b.name.replace('mcp__iae__', ''), input: b.input });
+        }
+      }
+      // A camera move the engine held back until the look's answer was said (it plays then): mark it.
+      if (cur && m.type === 'user' && Array.isArray(m.message?.content)) {
+        for (const r of m.message.content) {
+          const txt = Array.isArray(r.content) ? r.content.map((c) => c.text ?? '').join('') : String(r.content ?? '');
+          if (r.type === 'tool_result' && /camera goes there as you speak/.test(txt)) {
+            const b = cur.blocks.find((x) => x.id === r.tool_use_id);
+            if (b) b.held = true;
+          }
         }
       }
       if (cur && m.type === 'result') cur.usage = { ...(m.usage ?? {}), cost: m.total_cost_usd, ms: m.duration_ms, apiMs: m.duration_api_ms };
@@ -283,19 +306,31 @@ class Run {
     this.cur = null;
     const ttft = turn.firstDeltaAt ? turn.firstDeltaAt - (turn.sayAt || turn.startAt) : null;
     const total = turn.doneAt - (turn.sayAt || turn.startAt);
-    turn.ttft = ttft;
+    turn.ttft ??= ttft;
     turn.total = total;
-    const head = turn.kind === 'user' ? 'USER TURN' : turn.kind === 'pulse' ? 'PULSE' : 'EVENTS';
+    // The engine asks again when a reply to the person had no words: wait for that one instead.
+    turn.retried = turn.kind === 'user' && !!this.engine.project?.lead.queue?.some((q) => q.unheard);
+    // A retry completes the reply it asks again for: judge them together (timed from the person's words).
+    if (turn.retry) {
+      const prev = this.turns.findLast((t) => t !== turn && t.retried);
+      if (prev) {
+        turn.firstText = turn.text;
+        turn.text = [prev.text, turn.text].filter(Boolean).join(' ');
+        turn.allBlocks = [...prev.blocks, { type: 'tool', name: '(asked again)', input: {} }, ...turn.blocks];
+        if (prev.firstDeltaAt) turn.ttft = prev.firstDeltaAt - (turn.sayAt || turn.startAt);
+      }
+    }
+    const head = turn.kind === 'user' ? (turn.retry ? `USER TURN (asked again: ${turn.unheard === 'look' ? 'a look ended without its answer' : 'the first reply had no words'})` : turn.retried ? 'USER TURN (incomplete; the engine asks again)' : 'USER TURN') : turn.kind === 'pulse' ? 'PULSE' : 'EVENTS';
     const ctx = turn.prompt ? ` ctx=${turn.prompt.length}ch` : '';
     const u = turn.usage;
     const tok = u ? ` in=${(u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)}tok out=${u.output_tokens ?? 0}` : '';
-    this.line(`  [${head} #${turn.n}] ttft=${ttft ?? '—'}ms total=${total}ms${ctx}${tok}`);
+    this.line(`  [${head} #${turn.n}] ttft=${turn.ttft ?? '—'}ms total=${total}ms${ctx}${tok}`);
     if (turn.kind !== 'user') {
       const evs = (turn.prompt.match(/<events>([\s\S]*?)<\/events>/) ?? [])[1];
       if (evs) this.line(`    events in: ${evs.trim().replace(/\n/g, ' ‖ ').slice(0, 400)}`);
     }
     this.line(`  ARCHIE: ${turn.text ? `"${turn.text}"` : '(silence)'}  [${words(turn.text)}w]`);
-    const seq = turn.blocks.map((b) => (b.type === 'text' ? 'text' : b.name)).join(' → ');
+    const seq = turn.blocks.map((b) => (b.type === 'text' ? 'text' : b.held ? `${b.name}(after the answer)` : b.name)).join(' → ');
     if (seq) this.line(`    sequence: ${seq}`);
     for (const b of turn.blocks) {
       if (b.type !== 'tool') continue;
@@ -373,7 +408,7 @@ class Run {
     return new Promise((res) => {
       const timer = setTimeout(() => res(null), timeout);
       const check = (t) => {
-        if (t.kind === 'user' && skip-- <= 0) {
+        if (t.kind === 'user' && !t.retried && skip-- <= 0) {
           clearTimeout(timer);
           res(t);
         } else (this.pendingTurnWaiters ??= []).push(check);
@@ -394,6 +429,12 @@ class Run {
 
   topCard() {
     return this.engine.project?.ws.agenda.open()[0] ?? null;
+  }
+
+  /** A scenario expectation; listed in the scorecard (a failed one counts as an issue). */
+  check(label, pass, detail = '') {
+    (this.checks ??= []).push({ label, pass: !!pass, detail });
+    this.line(`  ${pass ? '✓' : '✗'} check: ${label}${detail ? ` (${detail})` : ''}`);
   }
 
   finish() {
@@ -440,16 +481,35 @@ function summarizeOps(ops) {
 const FILLER = /\b(great question|certainly|absolutely|of course|let me know|happy to|sounds good|got it|perfect|awesome|as an ai|good call|nice one|love (it|that)|great idea|great[,!.])/i;
 const GENERIC = /(what would you like|anything else|any preferences|how would you like|what do you think\?|what else|where should we start|what should we (do|build) next|do you want me to)/i;
 const RECOMMEND = /\b(I'd|I would|I'll|I will|I'm going|I recommend|I suggest|recommend|default|my pick|I lean|let's|keep|start with|go with|unless|sound right|okay\?|ok\?|fine\?|right\?)\b/i;
+/** Asking leave to do work instead of doing it ("Want a builder on it?", "Should I restart both?"). */
+const PERMISSION = /\b(want me to|should I|shall I|do you want (me|a builder|them|her|him)|want a builder|want (her|him|them|ada|kit) to|okay if I|ok if I|should (a|the) builder)\b[^?]*\?|\bwant (that|it|this)( now)?\?/i;
+/** A card whose question is whether to do the work at all ("Should a builder fix it?", "Start the API?"). */
+const PERMISSION_CARD = /\b(want me to|should I|shall I|want a builder|should (a|the) builder|(start|build|fix|restart|verify|wire|add) (it|that|this|them|both)( now)?\?)|^(start|restart|build) /i;
+/** Restart ceremony: builders resume on their own after a restart. */
+const RESTART_TALK = /\b(restart|re-start|relaunch)\w*\b[^.?]*\?|keep the app (open|running)|leave the app (open|running)/i;
+/** The person asked for an explanation: a longer answer is right then. */
+const EXPLAIN = /\b(walk me through|explain|how does|how do\b|understand|break (it|this) down|tell me how)\b/i;
+const sentences = (t) => (t || '').split(/(?<=[.!?])\s+/).filter((s) => s.trim()).length;
 
 function scorecard(run) {
   const said = run.turns.filter((t) => t.text);
   const lines = [`SCORECARD — ${run.name}`];
-  const user = run.turns.filter((t) => t.kind === 'user');
+  // A first reply with no words that the engine asked again for counts once, as its retry (timed from the person's words).
+  const user = run.turns.filter((t) => t.kind === 'user' && !t.retried);
   const ttfts = user.map((t) => t.ttft).filter((x) => x != null).sort((a, b) => a - b);
   const totals = user.map((t) => t.total).sort((a, b) => a - b);
   const med = (a) => (a.length ? a[Math.floor(a.length / 2)] : '—');
   const p90 = (a) => (a.length ? a[Math.min(a.length - 1, Math.floor(a.length * 0.9))] : '—');
-  lines.push(`latency (user turns): TTFT median ${med(ttfts)}ms p90 ${p90(ttfts)}ms max ${ttfts.at(-1) ?? '—'} · turn median ${med(totals)}ms max ${totals.at(-1) ?? '—'}`);
+  lines.push(`latency (user turns): TTFT median ${med(ttfts)}ms p90 ${p90(ttfts)}ms max ${ttfts.at(-1) ?? '—'} · turn median ${med(totals)}ms p90 ${p90(totals)}ms max ${totals.at(-1) ?? '—'}`);
+  const qs = said.reduce((s, t) => s + (t.text.match(/\?/g) ?? []).length, 0);
+  const tools = (t, name) => t.blocks.filter((b) => b.type === 'tool' && b.name === name);
+  const dels = run.turns.flatMap((t) => tools(t, 'delegate'));
+  const looks = run.turns.reduce((s, t) => s + t.blocks.filter((b) => b.type === 'tool' && /^(Read|Grep|Glob)$/.test(b.name)).length, 0);
+  const wordsPer = said.map((t) => words(t.text)).sort((a, b) => a - b);
+  lines.push(`talk: ${qs} questions over ${said.length} spoken turns (${said.length ? (qs / said.length).toFixed(2) : '—'}/turn) · words per spoken turn median ${med(wordsPer)} max ${wordsPer.at(-1) ?? '—'} · permission-asking turns ${said.filter((t) => PERMISSION.test(t.text)).length} · restart talk ${said.filter((t) => RESTART_TALK.test(t.text)).length}`);
+  const cards = run.turns.flatMap((t) => tools(t, 'ask'));
+  lines.push(`cards: ${cards.length} asked (${cards.filter((b) => PERMISSION_CARD.test(b.input.prompt ?? '')).length} asking leave to do the work)`);
+  lines.push(`action: ${dels.length} delegations (${dels.filter((b) => b.input.kind === 'investigate').length} investigate) · ${run.turns.filter((t) => tools(t, 'delegate').length > 1).length} turns with several · ${looks} quick looks (Read/Grep/Glob) · ${run.turns.reduce((s, t) => s + tools(t, 'focus').length, 0)} focus calls`);
   const ctx = run.turns.map((t) => t.prompt.length).filter(Boolean);
   lines.push(`context per turn: median ${med([...ctx].sort((a, b) => a - b))} chars, max ${Math.max(0, ...ctx)}`);
   const cost = run.turns.reduce((s, t) => s + (t.usage?.cost ?? 0), 0);
@@ -459,15 +519,22 @@ function scorecard(run) {
     issues++;
     lines.push(`  ✗ #${t.n} ${what}`);
   };
+  const unheard = user.filter((t) => !t.text);
+  lines.push(`replies to the person with no words: ${run.turns.filter((t) => t.retried).length} asked again by the engine, ${unheard.length} left silent`);
+  for (const t of unheard) flag(t, `the person heard nothing back (reply to "${String(t.body).slice(0, 60)}")`);
   for (const t of said) {
     const w = words(t.text);
-    if (w > 40) flag(t, `${w} words (>~35)`);
+    const explain = t.kind === 'user' && EXPLAIN.test(t.body);
+    if (explain ? w > 110 : w > 45) flag(t, `${w} words (>${explain ? '~100 for an explanation' : '~40'})`);
+    if (RESTART_TALK.test(t.text)) flag(t, `restart ceremony: "${t.text.match(RESTART_TALK)[0]}"`);
     const q = (t.text.match(/\?/g) ?? []).length;
     if (q > 1) flag(t, `${q} questions`);
     if (FILLER.test(t.text)) flag(t, `filler: "${t.text.match(FILLER)[0]}"`);
     if (GENERIC.test(t.text)) flag(t, `generic: "${t.text.match(GENERIC)[0]}"`);
     if (q === 1 && !RECOMMEND.test(t.text)) flag(t, 'question without a recommended default');
     if (/[*#`]|^\s*-\s/m.test(t.text)) flag(t, 'markdown in speech');
+    const written = t.blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    if (/\*\*|`|^\s*(\d+\.|-)\s/m.test(written)) flag(t, 'markdown written (scrubbed before speech)');
     const first = t.blocks[0];
     if (first && first.type !== 'text') flag(t, `tool before speech (${first.name})`);
   }
@@ -507,6 +574,10 @@ function scorecard(run) {
   const top = nodes.filter((n) => !n.parentId);
   lines.push(`map: ${nodes.length} nodes, ${top.length} top-level${top.length > 7 ? ' (✗ >7)' : ''}, ${nodes.filter((n) => n.parentId).length} nested, ${nodes.filter((n) => n.paths?.length).length} with paths`);
   if (top.length > 7) issues++;
+  for (const c of run.checks ?? []) {
+    lines.push(`  ${c.pass ? '✓' : '✗'} ${c.label}${c.detail ? `: ${c.detail}` : ''}`);
+    if (!c.pass) issues++;
+  }
   lines.push(`spoken turns ${said.length}/${run.turns.length}; mechanical issues: ${issues}`);
   return lines.join('\n');
 }
@@ -755,6 +826,123 @@ const SCENARIOS = {
     await greeting(run);
     await run.say('Remind me what has been decided so far, and who decided each thing.');
     await sleep(2000);
+  },
+
+  /**
+   * f. Flow: bias to action, and length that fits the moment. A walkthrough
+   * (several sentences, the camera follows, grounded in the code: nothing
+   * enqueues thumbnail jobs), two independent asks in one breath (two builders,
+   * no question), "how are we doing", a proposal answered "yeah, sounds good"
+   * (a go), then an app restart mid-build (builders resume on their own: nobody
+   * asks to restart them or to keep the app open), then a quiet stretch.
+   *   --seed DIR   copy DIR/.iae/{map,notes}.json instead of waiting for Atlas
+   */
+  async flow(run, engine, sandbox) {
+    const copy = join(sandbox, 'recipe-box');
+    cpSync(join(repo, 'examples/recipe-box'), copy, { recursive: true, filter: (s) => !/node_modules|\.iae$/.test(s) });
+    run.projectRoot = copy;
+    writeFileSync(join(run.dir, 'project-root.txt'), copy);
+    const seed = opt('--seed');
+    if (seed) {
+      mkdirSync(join(copy, '.iae'), { recursive: true });
+      for (const f of ['map.json', 'notes.json']) if (existsSync(join(seed, '.iae', f))) cpSync(join(seed, '.iae', f), join(copy, '.iae', f));
+      writeFileSync(join(copy, '.iae/state.json'), JSON.stringify({ createdAt: Date.now(), cartographedAt: Date.now(), isNew: false }));
+    }
+    const atlasDone = seed ? null : run.waitFor((e) => e.type === 'agent/upsert' && e.agent.id === 'atlas' && ['done', 'failed'].includes(e.agent.status), 420_000);
+    await engine.openProject(copy);
+    await greeting(run);
+    if (atlasDone) {
+      await atlasDone;
+      await run.nextTurn(30_000);
+    }
+    await sleep(1500);
+    const tools = (t, name) => (t?.allBlocks ?? t?.blocks ?? []).filter((b) => b.type === 'tool' && (name instanceof RegExp ? name.test(b.name) : b.name === name));
+    const qmarks = (t) => (t?.text.match(/\?/g) ?? []).length;
+    const LOOK = /^(Read|Grep|Glob)$/;
+    /** After a quick look, the answer it found was spoken (not muted after the tools). */
+    const heardAfterLook = (t) => {
+      const blocks = t?.allBlocks ?? t?.blocks ?? [];
+      const last = blocks.findLastIndex((b) => b.type === 'tool' && LOOK.test(b.name));
+      if (last === -1) return true;
+      const after = blocks.slice(last + 1).filter((b) => b.type === 'text' && !/^<silence/.test(b.text));
+      return after.some((b) => t.text.includes(b.text.replace(/\s+/g, ' ').trim().slice(0, 30)));
+    };
+    const GAP = /enqueue|queues?\b|nothing (ever )?(creates|inserts|adds|puts)|never (gets )?(queued|enqueued|created|added)|no (code|one|route)/i;
+
+    const overview = await run.say('I just want to understand how this project works at a very basic level.');
+    run.check('overview is a real explanation (4+ sentences, 50+ words)', sentences(overview?.text) >= 4 && words(overview?.text) >= 50, `${sentences(overview?.text)} sentences, ${words(overview?.text)} words`);
+    run.check('overview points the camera at what it names (2+ focus)', tools(overview, 'focus').length >= 2, `${tools(overview, 'focus').length} focus calls`);
+
+    // From a real voice test: the first attempt came back with no words and the answer took 6.5s.
+    const worker = await run.say('What does the jobs worker do, and how does it get its work?');
+    run.check('code question: first word within 2s', worker?.ttft != null && worker.ttft <= 2000, `ttft ${worker?.ttft ?? '∞'}ms`);
+    run.check('code question: answered on the first attempt (no retry needed)', !worker?.retry && words(worker?.text) >= 15, `${words(worker?.text)} words${worker?.retry ? ', after the engine asked again' : ''}`);
+
+    const walk = await run.say('Walk me through how a recipe photo becomes a thumbnail, from the upload to the card on the home page.');
+    run.check('walkthrough is heard in full (45+ words)', words(walk?.text) >= 45, `${sentences(walk?.text)} sentences, ${words(walk?.text)} words`);
+    run.check('walkthrough: what the look found is spoken', heardAfterLook(walk), `${tools(walk, LOOK).length} looks`);
+    run.check('walkthrough names the real gap (nothing enqueues thumbnail jobs)', GAP.test(walk?.text ?? ''), '');
+    run.check('walkthrough moves the camera', tools(walk, 'focus').length >= 1, `${tools(walk, 'focus').length} focus calls`);
+
+    // From a real voice test: this one once ended with no words at all.
+    const save = await run.say('Walk me through how a recipe gets saved from the web app to the database.');
+    run.check('save walkthrough is heard (40+ words, never silent)', words(save?.text) >= 40, `${words(save?.text)} words${save?.retry ? ', after the engine asked again' : ''}`);
+    run.check('save walkthrough: what the look found is spoken', heardAfterLook(save), `${tools(save, LOOK).length} looks`);
+    for (const [name, t] of [['thumbnail', walk], ['save', save]]) run.check(`${name} walkthrough answered on the first attempt (no retry needed)`, t && !t.retry, t?.retry ? `retry (${t.unheard})` : '');
+
+    const two = await run.say('Okay. Two things then: make uploaded photos actually get thumbnails, and add rate limiting to the search endpoint.');
+    run.check('two asks in one breath → two builders this turn', tools(two, 'delegate').length >= 2, `${tools(two, 'delegate').length} delegations`);
+    run.check('…and no question', qmarks(two) === 0, two?.text ?? '');
+
+    const status = await run.say('How are we doing?');
+    run.check('status answer is short', words(status?.text) <= 40, `${words(status?.text)} words`);
+
+    const before = run.turns.length;
+    const digest = await run.say("What would you do about the weekly digest? I don't think it ever sends.");
+    const yeah = await run.say('Yeah, sounds good.');
+    const digestDelegated = run.turns.slice(before).some((t) => tools(t, 'delegate').some((b) => /digest|weekly|schedul|cron/i.test(`${b.input.title} ${b.input.brief}`)));
+    run.check('digest: the finding is spoken, not left on a card', heardAfterLook(digest) && GAP.test(digest?.text ?? ''), digest?.text ?? '');
+    run.check('"yeah, sounds good" is a go (digest work delegated)', digestDelegated, `delegations: digest turn ${tools(digest, 'delegate').length}, yeah turn ${tools(yeah, 'delegate').length}`);
+    run.check('…and the go turn asks no leave', !PERMISSION.test(yeah?.text ?? ''), yeah?.text ?? '');
+
+    await sleep(5000);
+    run.line('── app restart (close + reopen) while builders work');
+    await engine.closeProject();
+    await engine.openProject(copy);
+    const back = await greeting(run);
+    const survived = await run.say('Did the builders survive that?');
+    const restartTalk = [back, survived].filter((t) => RESTART_TALK.test(t?.text ?? '') || /want me to restart|should I restart/i.test(t?.text ?? ''));
+    run.check('after a restart nobody asks to restart builders or keep the app open', !restartTalk.length, restartTalk.map((t) => t.text).join(' | '));
+
+    await run.quiet(35_000, '(pulse window while builders work)');
+    const said = run.turns.filter((t) => t.text);
+    const asking = said.filter((t) => PERMISSION.test(t.text));
+    run.check('no turn asks leave to do the work', !asking.length, asking.map((t) => `#${t.n} "${t.text.match(PERMISSION)[0]}"`).join(' | '));
+    const leaveCards = run.turns.flatMap((t) => tools(t, 'ask')).filter((b) => PERMISSION_CARD.test(b.input.prompt ?? ''));
+    run.check('no card asks leave to do the work', !leaveCards.length, leaveCards.map((b) => `"${b.input.prompt}"`).join(' | '));
+    for (const a of engine.project?.crew.visible() ?? []) await engine.stopAgent(a.id).catch(() => {});
+    await sleep(3000);
+  },
+
+  /** Quick check of the look-then-answer path: two walkthroughs on recipe-box (--seed DIR skips Atlas; --raw logs the stream). */
+  async walk(run, engine, sandbox) {
+    const copy = join(sandbox, 'recipe-box');
+    cpSync(join(repo, 'examples/recipe-box'), copy, { recursive: true, filter: (s) => !/node_modules|\.iae$/.test(s) });
+    run.projectRoot = copy;
+    const seed = opt('--seed');
+    if (seed) {
+      mkdirSync(join(copy, '.iae'), { recursive: true });
+      for (const f of ['map.json', 'notes.json']) if (existsSync(join(seed, '.iae', f))) cpSync(join(seed, '.iae', f), join(copy, '.iae', f));
+      writeFileSync(join(copy, '.iae/state.json'), JSON.stringify({ createdAt: Date.now(), cartographedAt: Date.now(), isNew: false }));
+    }
+    await engine.openProject(copy);
+    await greeting(run);
+    const qs = ['What does the jobs worker do, and how does it get its work?', 'Walk me through how a recipe photo becomes a thumbnail, from the upload to the card on the home page.', 'Walk me through how a recipe gets saved from the web app to the database.'];
+    for (const q of qs) {
+      const t = await run.say(q);
+      run.check(`heard: "${q.slice(0, 40)}…"`, words(t?.text) >= 20, `${words(t?.text)} words, ttft ${t?.ttft ?? '∞'}ms`);
+      run.check(`first attempt answered: "${q.slice(0, 40)}…"`, t && !t.retry, t?.retry ? `retry (${t.unheard})` : '');
+    }
   },
 
   /** Sketcher: latency and quality on typical partial sentences. */

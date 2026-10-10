@@ -2,7 +2,7 @@
 // settings or connectors, a custom system prompt and only Arxitect's own tools (plus
 // a quick look at code). With these options it answers in about a second.
 
-import type { McpSdkServerConfigWithInstance, Options } from '@anthropic-ai/claude-agent-sdk';
+import type { HookCallbackMatcher, McpSdkServerConfigWithInstance, Options } from '@anthropic-ai/claude-agent-sdk';
 import type { Settings } from '../../shared/model';
 import { leadSystemPrompt } from './prompts';
 import { baseOptions } from './sdk';
@@ -21,7 +21,42 @@ export function leadThinking(effort: Settings['leadEffort']): Pick<Options, 'thi
   return env === 'adaptive' ? { thinking: { type: 'adaptive' } } : {};
 }
 
-export function leadOptions(root: string, s: Settings, tools: McpSdkServerConfigWithInstance, resume?: string): Options {
+/** Said to the lead right after a look at code, where it otherwise drifts into a written report. */
+export const AFTER_LOOK =
+  'Spoken reply: the person is listening, not reading. Say what you found next, before any other tool (your words are heard until you have): at most four to six short plain sentences (about 100 words), the one thing that matters most last. No lists, headings, bold, backticks or code. If one more look is truly needed, take it first, without comment.';
+
+/**
+ * In-process hooks (no wait). After Read, Grep or Glob: remind the lead its
+ * answer is spoken. Before any other tool: `hold` may answer with a reason to
+ * hold it back for now (the lead looked at code and hasn't said what it found;
+ * left alone it moves the camera and then stays silent).
+ */
+export function leadHooks(hold?: (tool: string, input: unknown) => string | null): Partial<Record<'PostToolUse' | 'PreToolUse', HookCallbackMatcher[]>> {
+  return {
+    PostToolUse: [
+      {
+        matcher: 'Read|Grep|Glob',
+        hooks: [async () => ({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: AFTER_LOOK } })],
+      },
+    ],
+    ...(hold
+      ? {
+          PreToolUse: [
+            {
+              hooks: [
+                async (input) => {
+                  const reason = input.hook_event_name === 'PreToolUse' ? hold(input.tool_name, input.tool_input) : null;
+                  return reason ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } } : {};
+                },
+              ],
+            },
+          ],
+        }
+      : {}),
+  };
+}
+
+export function leadOptions(root: string, s: Settings, tools: McpSdkServerConfigWithInstance, resume?: string, hold?: (tool: string, input: unknown) => string | null): Options {
   return {
     ...baseOptions(root),
     model: s.leadModel,
@@ -31,6 +66,7 @@ export function leadOptions(root: string, s: Settings, tools: McpSdkServerConfig
     tools: ['Read', 'Glob', 'Grep'],
     mcpServers: { iae: tools },
     allowedTools: [...LEAD_TOOL_NAMES.map((n) => `mcp__iae__${n}`), 'Read', 'Glob', 'Grep'],
+    hooks: leadHooks(hold),
     permissionMode: 'dontAsk',
     strictMcpConfig: true,
     settingSources: [],

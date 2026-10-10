@@ -47,6 +47,17 @@ export interface LeadToolHost {
 
 /** Appended to tool results once the turn's sentence is out (text after tools isn't spoken). */
 export const END_HINT = '\n(You already spoke this turn; nothing after your tools is heard. When your tool calls are done, end the turn by replying exactly <silence/>.)';
+/**
+ * Appended while the turn hasn't said its piece yet (nothing said, a short
+ * opening, or a look whose answer hasn't come): text after the tools is heard,
+ * so a lead that believes otherwise doesn't end in silence.
+ */
+export const SAY_HINT = "\n(Your words after these tools are heard: if you haven't yet told the person what you found or answered them, do it now, out loud, in full.)";
+
+/** A tool result with what happens to text after it (unknown: no hint). */
+export function hinted(text: string, spoken: boolean | undefined): string {
+  return spoken === undefined ? text : text + (spoken ? END_HINT : SAY_HINT);
+}
 
 export const ok = (text: string): CallToolResult => ({ content: [{ type: 'text', text }] });
 const okResult = ok;
@@ -64,6 +75,58 @@ export async function guard(name: string, fn: () => CallToolResult | Promise<Cal
 
 const AGENDA_KINDS: AgendaKind[] = ['decision', 'idea', 'risk', 'clarify'];
 
+/** About one spoken sentence: how long the camera stays on each part of a walkthrough. */
+export const FOCUS_STEP_MS = 3_500;
+/** Focus calls closer together than this belong to one walk (one batch of tools). */
+const FOCUS_BATCH_MS = 2_000;
+
+/**
+ * Several focus calls in one batch walk the camera through them in order, one
+ * step every few seconds, so it follows an explanation as it is spoken instead
+ * of jumping to the last part. The first goes at once. A walk still pending is
+ * dropped when the person does anything or a later turn moves the camera.
+ */
+export class CameraWalk {
+  private timers = new Set<ReturnType<typeof setTimeout>>();
+  private lastCallAt = -Infinity;
+  private nextAt = 0;
+
+  constructor(
+    private readonly move: (nodeId: string | null, mode: 'show' | 'enter') => void,
+    /** True when the person was active after `since` (or the project closed): skip the step. */
+    private readonly overtaken: (since: number) => boolean,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  /** Moves now or later; returns the delay in ms. */
+  go(nodeId: string | null, mode: 'show' | 'enter'): number {
+    const now = this.now();
+    if (now - this.lastCallAt > FOCUS_BATCH_MS) {
+      this.cancel();
+      this.nextAt = now;
+    }
+    this.lastCallAt = now;
+    const at = Math.max(now, this.nextAt);
+    this.nextAt = at + FOCUS_STEP_MS;
+    const delay = at - now;
+    if (!delay) {
+      this.move(nodeId, mode);
+      return 0;
+    }
+    const timer = setTimeout(() => {
+      this.timers.delete(timer);
+      if (!this.overtaken(now)) this.move(nodeId, mode);
+    }, delay);
+    this.timers.add(timer);
+    return delay;
+  }
+
+  cancel(): void {
+    for (const t of this.timers) clearTimeout(t);
+    this.timers.clear();
+  }
+}
+
 /** Status for a node the lead creates: built when its paths already hold files. */
 export function statusForPaths(ws: Workspace, paths: string[] | undefined): NodeStatus {
   if (!paths?.length) return 'planned';
@@ -75,9 +138,14 @@ export function statusForPaths(ws: Workspace, paths: string[] | undefined): Node
 
 export function createLeadTools(host: LeadToolHost): McpSdkServerConfigWithInstance {
   const { ws } = host;
-  // Results end with a reminder once the sentence is out: the model otherwise
-  // tends to write its reply a second time after the tools (unspoken, slow).
-  const ok = (text: string): CallToolResult => okResult(host.hasSpoken?.() ? text + END_HINT : text);
+  // Results say what happens to text after them. Once the sentence is out it
+  // isn't heard (the model otherwise writes its reply a second time, unspoken
+  // and slow); before that it is, so the answer must come (never silence).
+  const ok = (text: string): CallToolResult => okResult(hinted(text, host.hasSpoken?.()));
+  const walk = new CameraWalk(
+    (nodeId, mode) => host.emit({ type: 'focus', nodeId, mode }),
+    (since) => ws.isClosed || ws.lastUserActivityAt > since,
+  );
   const nodeOrNull = (id: string | null | undefined): { id: string | null; note: string } => {
     if (!id) return { id: null, note: '' };
     if (ws.map.nodes[id]) return { id, note: '' };
@@ -91,7 +159,7 @@ export function createLeadTools(host: LeadToolHost): McpSdkServerConfigWithInsta
     tools: [
       tool(
         'sketch_map',
-        'Change the architecture map. Ops apply in order (create a parent before its children). Ops: {op:"upsertNode", node:{id, parentId?, label?, kind?, status?, summary?, tech?, paths?}} (creates or merges; new nodes default to "planned"), {op:"removeNode", id} (removes its subtree), {op:"moveNode", id, parentId}, {op:"upsertEdge", edge:{from, to, kind?, label?}}, {op:"removeEdge", id:"from->to"}. Returns the ids applied and any fixes.',
+        'Change the architecture map. Ops apply in order (create a parent before its children). Ops: {op:"upsertNode", node:{id, parentId?, label?, techLabel?, kind?, status?, summary?, tech?, paths?}} (creates or merges; new nodes default to "planned"), {op:"removeNode", id} (removes its subtree), {op:"moveNode", id, parentId}, {op:"upsertEdge", edge:{from, to, kind?, label?}}, {op:"removeEdge", id:"from->to"}. Returns the ids applied and any fixes.',
         { ops: z.array(opInput).describe('Map operations, applied in order.') },
         (args) =>
           guard('sketch_map', () => {
@@ -103,7 +171,7 @@ export function createLeadTools(host: LeadToolHost): McpSdkServerConfigWithInsta
       ),
       tool(
         'focus',
-        'Move the person\'s camera to a node: "show" frames it, "enter" dives inside it (its children and files show). Use it whenever you point at a node or a file. node_id null returns to the top level.',
+        'Move the person\'s camera to a node: "show" frames it, "enter" dives inside it (its children and files show). Use it whenever you point at a node or a file. Walking through several parts? Call it once per part, in the order you name them, all in one batch: the camera follows your words, a step every few seconds. node_id null returns to the top level.',
         {
           node_id: z.string().nullable().describe('Node id, or null for the top level.'),
           mode: z.string().optional().describe('"show" (default) or "enter".'),
@@ -113,13 +181,13 @@ export function createLeadTools(host: LeadToolHost): McpSdkServerConfigWithInsta
             const id = args.node_id || null;
             if (id && !ws.map.nodes[id]) return fail(`No node "${id}". Known top-level ids: ${topIds(ws).join(', ') || '(none)'}.`);
             const mode = args.mode === 'enter' ? 'enter' : 'show';
-            host.emit({ type: 'focus', nodeId: id, mode });
-            return ok(`Camera ${mode === 'enter' ? 'inside' : 'on'} ${id ?? 'the top level'}.`);
+            const later = walk.go(id, mode);
+            return ok(`Camera ${later ? 'goes ' : ''}${mode === 'enter' ? 'inside' : 'on'} ${id ?? 'the top level'}${later ? ` in ${Math.round(later / 100) / 10}s` : ''}.`);
           }),
       ),
       tool(
         'ask',
-        'Put a question on the map, anchored to its node. Only for what changes what gets built and only the person can answer. Give 2–4 short options; the first is your recommendation. Returns the question id.',
+        'Put a question on the map, anchored to its node. Only for what changes what gets built and only the person can answer (taste, business facts, priorities between conflicting options, risk appetite) — never to ask leave to start, restart, fix or check something: do that. Give 2–4 short options; the first is your recommendation. Returns the question id.',
         {
           prompt: z.string().describe('The question as spoken, ≤ 25 words, naming real parts of this system.'),
           kind: z.string().optional().describe('decision | idea | risk | clarify (default decision).'),
@@ -178,7 +246,7 @@ export function createLeadTools(host: LeadToolHost): McpSdkServerConfigWithInsta
       ),
       tool(
         'delegate',
-        'Start a builder (kind "build": full Claude Code session that edits code) or a scout (kind "investigate": read-only). The brief must be self-contained: goal, node, relevant paths, decisions, constraints, and what done means. Returns immediately with the agent\'s id.',
+        'Start a builder (kind "build": full Claude Code session that edits code) or a scout (kind "investigate": read-only). Several independent jobs: call it once per job, all in the same batch. The brief must be self-contained: goal, node, relevant paths, decisions, constraints, and what done means. Returns immediately with the agent\'s id.',
         {
           title: z.string().describe('Short job title, ≤ 6 words: "Build session middleware".'),
           brief: z.string().describe('Self-contained instructions. Builders cannot hear the conversation.'),

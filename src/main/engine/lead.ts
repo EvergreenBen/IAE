@@ -11,6 +11,7 @@ import { leadOptions } from './lead-options';
 import { errorText, InputQueue, log, looksLikeAuthError } from './sdk';
 import { AskedQuestions, withoutDropped, type RepeatGuard } from './repeat';
 import { cleanReply, SpeechFilter } from './speech';
+import { CameraWalk } from './tools';
 import type { LeadEvent, Workspace } from './workspace';
 
 export interface LeadDeps {
@@ -32,6 +33,12 @@ interface PendingTurn {
   kind: TurnKind;
   body: string;
   retries: number;
+  /**
+   * Asks again for the spoken answer to the person's words (`body`): the
+   * first reply had no words ("silent"), or looked at the code and never
+   * said what it found ("look").
+   */
+  unheard?: 'silent' | 'look';
 }
 
 interface Turn extends PendingTurn {
@@ -46,6 +53,12 @@ interface Turn extends PendingTurn {
   textBlocks: number;
   /** A tool call happened; later text is muted if the opening already said enough. */
   afterTools: boolean;
+  /** A quick look at code (Read, Grep, Glob) ran since the last text: the next text is its answer, and is spoken. */
+  looking: boolean;
+  /** Camera moves held back this turn until the look's answer is said. */
+  held: number;
+  /** Where those moves were going: played, paced, once the answer starts. */
+  deferred: { nodeId: string | null; mode: 'show' | 'enter' }[];
   muted: boolean;
   interrupted: boolean;
   /** Barged in after the opening was said: tools finish, nothing more is spoken. */
@@ -67,8 +80,33 @@ interface Session {
 const FIRST_MESSAGE_TIMEOUT = 60_000;
 const TURN_TIMEOUT = 240_000;
 const INTERRUPT_GRACE = 4_000;
-/** An opening shorter than this ("Let me look.") may be followed by text after tools. */
+/** An opening shorter than this ("Sure.") may be followed by text after tools. */
 const MIN_OPENING_WORDS = 6;
+/**
+ * Tools that look at the code. What they find is the answer, so the text
+ * after them is spoken however long the opening was ("Let me look at the
+ * worker." → Grep → the answer).
+ */
+export const LOOK_TOOLS = new Set(['Read', 'Grep', 'Glob']);
+/**
+ * Why a camera move waits while a look's answer is owed: left alone, the lead
+ * moves the camera through the parts it means to talk about, then stays
+ * silent. The move isn't lost: it plays as the answer is spoken.
+ */
+export const HOLD_FOR_ANSWER =
+  "Noted: the camera goes there as you speak. The person has only heard your opening, so give them your answer now, out loud, what you found in plain spoken sentences. No need to call focus again, and don't mention this.";
+/** The tools held back while a look's answer is owed: only camera moves (never the work itself). */
+const HELD_TOOLS = new Set(['mcp__iae__focus']);
+/** At most this many tool calls are held back per turn (then the retry is the net). */
+const MAX_HELD = 12;
+/** Said for the lead when a reply to the person goes straight to a look without a word. */
+export const LOOK_OPENING = 'Let me check the code.';
+/** Sent when a reply to the person left them without an answer. */
+export const UNHEARD = {
+  silent:
+    "Your reply to what the person just said had no words in it, so they heard nothing. Answer them now, out loud: your sentence first, then any tools. Don't mention this note. Reply <silence/> only if they asked you to be quiet.",
+  look: "You looked at the code but never said what you found, so the person heard only your opening. Tell them now, out loud, as you would have right after the look: plain spoken sentences, no lists or markdown, without repeating the opening. Don't mention this note.",
+} as const;
 /** The whole map is re-sent at least this often (in turns) when it keeps changing. */
 const FULL_MAP_EVERY = 25;
 
@@ -88,6 +126,11 @@ export class Lead {
   private asked = new AskedQuestions();
   private stale = false;
   private closed = false;
+  /** Camera moves the lead's turns make outside its tools (held for a look's answer). */
+  private readonly walk = new CameraWalk(
+    (nodeId, mode) => this.d.emit({ type: 'focus', nodeId, mode }),
+    (since) => !!this.d.ws.isClosed || this.d.ws.lastUserActivityAt > since,
+  );
   /** When the last reply finished, and roughly when its speech will end. */
   lastDoneAt = 0;
   speechEndsAt = 0;
@@ -113,21 +156,26 @@ export class Lead {
     return t ? { kind: t.kind, body: t.body, startedAt: t.startedAt } : null;
   }
 
-  /** The turn in flight has already said its piece (later text won't be spoken). */
+  /** The turn in flight has already said its piece (later text won't be spoken). Not while a look is out: its answer is still to come. */
   get hasSpoken(): boolean {
-    return !!this.turn && cleanReply(this.turn.raw).split(/\s+/).filter(Boolean).length >= MIN_OPENING_WORDS;
+    const t = this.turn;
+    if (!t) return false;
+    // Chose silence up front (a pulse with nothing to say): that is its piece.
+    if (t.filter.silent) return true;
+    return !t.looking && cleanReply(t.raw).split(/\s+/).filter(Boolean).length >= MIN_OPENING_WORDS;
   }
 
   send(kind: TurnKind, body: string): void {
     if (this.closed) return;
-    const queuedUser = this.queue.find((t) => t.kind === 'user');
     if (kind === 'user') {
+      // New words supersede asking again for the answer to the last ones.
+      const queuedUser = this.queue.find((t) => t.kind === 'user' && !t.unheard);
       // Anything else waiting rides along as context; user words go first.
       for (const t of this.queue) if (t.kind === 'events' && t.body) this.d.ws.pushEvent(t.body);
       if (queuedUser) queuedUser.body += `\n${body}`;
       this.queue = [queuedUser ?? { kind, body, retries: 0 }];
-      // Don't make the person wait behind an unprompted turn that hasn't spoken yet.
-      if (this.turn && this.turn.kind !== 'user' && !this.turn.replying) void this.interrupt();
+      // Don't make the person wait behind a turn they didn't ask for that hasn't spoken yet.
+      if (this.turn && (this.turn.kind !== 'user' || this.turn.unheard) && !this.turn.replying) void this.interrupt();
     } else if (kind === 'events') {
       if (this.queue.length) {
         if (body) this.d.ws.pushEvent(body);
@@ -195,7 +243,7 @@ export class Lead {
     const ws = this.d.ws;
     const resume = this.resumeTries < 2 ? ws.state.leadSessionId : undefined;
     const input = new InputQueue();
-    const q = query({ prompt: input, options: leadOptions(ws.root, s, this.d.makeTools(), resume) });
+    const q = query({ prompt: input, options: leadOptions(ws.root, s, this.d.makeTools(), resume, (tool, toolInput) => this.holdForAnswer(tool, toolInput)) });
     const session: Session = { q, input, usedResume: !!resume, gotInit: false, closing: false };
     // A fresh session hasn't seen the map yet (a resumed one saw an old one).
     this.seen = null;
@@ -257,7 +305,7 @@ export class Lead {
     if (turn && turn.retries < 2) {
       this.clearTurn(turn);
       for (const e of turn.events) this.d.ws.pushEvent(e.text, e.urgent);
-      this.queue.unshift({ kind: turn.kind, body: turn.body, retries: turn.retries + 1 });
+      this.queue.unshift({ kind: turn.kind, body: turn.body, retries: turn.retries + 1, ...(turn.unheard ? { unheard: turn.unheard } : {}) });
     } else if (turn) this.finishTurn(turn);
     this.pump();
   }
@@ -290,7 +338,8 @@ export class Lead {
     this.turnsSinceFullMap = context.fullMap ? 0 : this.turnsSinceFullMap + 1;
     this.sessionTurns++;
     const events = ws.takeEvents();
-    const text = wrapTurn(context.text, events, pending.kind, pending.body);
+    // The person's words are already in the session; a retry only asks for the spoken answer.
+    const text = pending.unheard ? `${wrapTurn(context.text, events, 'events', '')}\n<unheard>${UNHEARD[pending.unheard]}</unheard>` : wrapTurn(context.text, events, pending.kind, pending.body);
     const turn: Turn = {
       ...pending,
       id: `turn-${nanoid(8)}`,
@@ -302,6 +351,9 @@ export class Lead {
       streamed: new Set(),
       textBlocks: 0,
       afterTools: false,
+      looking: false,
+      held: 0,
+      deferred: [],
       muted: false,
       interrupted: false,
       softStopped: false,
@@ -348,7 +400,7 @@ export class Lead {
       if (m.parent_tool_use_id) return;
       const ev = m.event;
       if (ev.type === 'message_start') turn.streamed.add(ev.message.id);
-      else if (ev.type === 'content_block_start') this.blockStart(turn, ev.content_block.type);
+      else if (ev.type === 'content_block_start') this.blockStart(turn, ev.content_block.type, (ev.content_block as { name?: string }).name);
       else if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta' && !turn.muted) this.feed(turn, ev.delta.text);
       return;
     }
@@ -358,8 +410,8 @@ export class Lead {
       if (m.error === 'authentication_failed' || m.error === 'oauth_org_not_allowed') this.d.onClaudeStatus(false, 'Claude Code is not signed in.');
       // Without partial messages for this message (rare), speak whole blocks at once.
       if (!turn.streamed.has(m.message.id)) {
-        for (const block of m.message.content as { type: string; text?: string }[]) {
-          this.blockStart(turn, block.type);
+        for (const block of m.message.content as { type: string; text?: string; name?: string }[]) {
+          this.blockStart(turn, block.type, block.name);
           if (block.type === 'text' && block.text && !turn.muted) this.feed(turn, block.text);
         }
       }
@@ -374,31 +426,72 @@ export class Lead {
     }
   }
 
+  /**
+   * The person asked, the lead looked at the code, and hasn't said what it
+   * found: camera moves wait until it has (the reason goes back to the lead
+   * as the call's result). Everything else runs.
+   */
+  private holdForAnswer(tool: string, input?: unknown): string | null {
+    const t = this.turn;
+    if (!t || t.kind !== 'user' || !t.looking || t.softStopped || t.interrupted || !HELD_TOOLS.has(tool) || t.held >= MAX_HELD) return null;
+    t.held++;
+    const i = (input ?? {}) as { node_id?: unknown; mode?: unknown };
+    const nodeId = typeof i.node_id === 'string' && i.node_id ? i.node_id : null;
+    if (nodeId === null || this.d.ws.map.nodes[nodeId]) t.deferred.push({ nodeId, mode: i.mode === 'enter' ? 'enter' : 'show' });
+    return HOLD_FOR_ANSWER;
+  }
+
+  /** The camera moves held back for a look's answer play now, paced like any walk. */
+  private playDeferred(turn: Turn): void {
+    for (const f of turn.deferred.splice(0)) this.walk.go(f.nodeId, f.mode);
+  }
+
   private saidOpening(turn: Turn): boolean {
     return turn.afterTools && cleanReply(turn.raw).split(/\s+/).filter(Boolean).length >= MIN_OPENING_WORDS;
   }
 
   /**
    * One utterance per turn: the opening is spoken; once tools have run, any
-   * further text is muted if the opening already said something real.
+   * further text is muted if the opening already said something real (it
+   * would only restate it). Except after a quick look at code: then the text
+   * is the answer the look found, and it is spoken.
    */
-  private blockStart(turn: Turn, type: string): void {
+  private blockStart(turn: Turn, type: string, name?: string): void {
     if (type === 'tool_use' || type === 'server_tool_use') {
+      // The text before the tools is complete: release its last sentence now
+      // (with the trailing break the filter held, so it reads as finished).
+      if (!turn.muted) {
+        const tail = turn.filter.flushTail();
+        this.say(turn, turn.guard ? turn.guard.push(tail) + turn.guard.flush() : tail);
+      }
       turn.afterTools = true;
-      // The text before the tools is complete: release its last sentence now.
-      if (turn.guard && !turn.muted) this.say(turn, turn.guard.flush());
+      if (name && LOOK_TOOLS.has(name)) {
+        // Unless the person talked over this turn, what the look finds gets said.
+        if (!turn.softStopped && !turn.interrupted) turn.muted = false;
+        // Straight to the code without a word: say so now, so the person isn't
+        // waiting on the look in silence.
+        if (turn.kind === 'user' && !turn.unheard && !turn.muted && !turn.filter.silent && !cleanReply(turn.raw)) this.feed(turn, `${LOOK_OPENING} `);
+        turn.looking = true;
+      }
     }
     if (type !== 'text' || turn.muted) return;
-    if (this.saidOpening(turn)) {
+    // After a look the answer is still to come (an empty text block doesn't count as it).
+    if (!turn.looking && this.saidOpening(turn)) {
       turn.muted = true;
       return;
     }
-    if (turn.textBlocks++ > 0) this.feed(turn, ' ');
+    if (turn.textBlocks++ > 0 && !/\s$/.test(turn.raw)) this.feed(turn, ' ');
   }
 
   private feed(turn: Turn, chunk: string): void {
     turn.raw += chunk;
     const out = turn.filter.push(chunk);
+    // Words after a look are its answer; once they flow, the look is over (a silence tag isn't words),
+    // and the camera moves held for it start walking with them.
+    if (turn.looking && out.trim()) {
+      turn.looking = false;
+      this.playDeferred(turn);
+    }
     this.say(turn, turn.guard ? turn.guard.push(out) : out);
   }
 
@@ -419,12 +512,22 @@ export class Lead {
 
   private finishTurn(turn: Turn): void {
     if (this.turn !== turn) return;
+    if (!turn.interrupted && !turn.softStopped) this.playDeferred(turn);
     let tail = turn.filter.end();
     if (turn.guard) tail = turn.guard.push(tail) + turn.guard.flush();
     if (tail && !turn.filter.silent && !turn.interrupted) this.d.emit({ type: 'lead/delta', turnId: turn.id, text: tail });
     const dropped = turn.guard?.dropped ?? [];
     if (dropped.length) log('lead', `trimmed a repeat of an open card: ${dropped.map((d) => `"${d.trim()}"`).join(' ')}`);
     const text = turn.filter.silent ? '' : dropped.length ? withoutDropped(cleanReply(turn.raw), dropped) : cleanReply(turn.raw);
+    // The person spoke and heard nothing back (straight to tools, then quiet), or
+    // only "Let me look…" (a look whose answer never came): ask once more for
+    // the spoken answer, ahead of anything else. If they already said more,
+    // their new words get the answer instead.
+    const unheard = !text ? 'silent' : turn.looking ? 'look' : null;
+    if (unheard && turn.kind === 'user' && !turn.unheard && !turn.interrupted && !turn.softStopped && !this.closed && !this.queue.some((t) => t.kind === 'user')) {
+      log('lead', unheard === 'look' ? 'a look ended without its answer; asking for it' : 'a reply to the person had no words; asking for the spoken answer');
+      this.queue.unshift({ kind: 'user', body: turn.body, retries: 0, unheard });
+    }
     if (text && !turn.interrupted) {
       const added = this.d.ws.agenda.open().filter((i) => i.createdAt >= turn.startedAt);
       this.asked.record(text, added.map((i) => i.id));
