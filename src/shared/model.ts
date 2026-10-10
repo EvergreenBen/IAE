@@ -30,11 +30,16 @@ export interface ArchNode {
   id: string;
   /** null → top level of the project. Nodes nest arbitrarily deep. */
   parentId: string | null;
-  /** 1–3 words, human. "Auth", "Recipe API", "Postgres". */
+  /** 1–4 plain-English words naming its role: "Signs people in", "Saves your recipes". */
   label: string;
+  /**
+   * The name a developer would use: "Auth API", "Postgres", "IPC Bridge".
+   * Shown on hover or selection. Optional: older maps don't have it.
+   */
+  techLabel?: string;
   kind: NodeKind;
   status: NodeStatus;
-  /** One sentence: what it does and why it exists. */
+  /** One sentence in everyday words: what it does and why it exists. */
   summary?: string;
   /** Notable technology. ["Next.js", "Prisma"] */
   tech?: string[];

@@ -258,6 +258,7 @@ export function describeMap(map: ArchMap, files?: FileEntry[], maxFilesPerNode =
   const walk = (parent: string | null, depth: number) => {
     for (const n of childrenOf(map, parent)) {
       const bits = [`${'  '.repeat(depth)}- ${n.label} [${n.id}] (${n.kind}, ${n.status})`];
+      if (n.techLabel) bits.push(`techLabel: ${n.techLabel}`);
       if (n.tech?.length) bits.push(`tech: ${n.tech.join(', ')}`);
       const c = counts.get(n.id);
       if (c) bits.push(`${c} files`);
