@@ -12,6 +12,7 @@ import type { GhostProposal } from '@shared/model';
 import { bridge } from '../bridge';
 import { ui, useIae } from '../state/store';
 import { voice } from '../voice/controller';
+import { turnTrace } from '../voice/trace';
 import { activeQuestion, answersQuestion } from './context';
 import { lexiconProposals, sameProposals } from './lexicon';
 
@@ -107,6 +108,7 @@ export function send(raw: string, via: 'text' | 'voice'): void {
   const question = activeQuestion(s.agenda, (s as { activeAgendaId?: string | null }).activeAgendaId);
   const aboutOtherNode = s.selectedNodeId && question && question.nodeId !== s.selectedNodeId;
   const agendaId = question && !aboutOtherNode && answersQuestion(text, question) ? question.id : undefined;
+  if (via === 'voice') turnTrace.mark('sent');
   void bridge.say(text, agendaId ? { via, agendaId } : { via });
   clearAfterReply();
 }

@@ -1,88 +1,128 @@
-// The lead's voice: speechSynthesis with the best installed English voice.
-// Replies are spoken sentence by sentence as they stream, so speech starts
-// after the first sentence, not after the whole reply. Word boundaries pulse
-// Archie's mouth. Barge-in cancels everything at once.
+// The lead's voice. Replies are spoken sentence by sentence as they stream, so
+// speech starts after the first sentence, not after the whole reply. Barge-in
+// cancels everything at once.
+//
+// Kokoro, running on this machine (kokoro.ts), is the voice. The system voice
+// (systemVoice.ts) stands in when Kokoro can't run, when the person picked it,
+// and for a reply that starts while Kokoro is still loading — after waiting a
+// moment, so a launch from local model files still opens in Kokoro. A run of
+// speech never changes voice part-way through.
+//
+// Two notions of "talking": audible (sound is coming out right now: the mouth,
+// the avatar) and active (a reply is under way, including the gaps between its
+// sentences: the mic listens differently for all of it).
 
-import { speechPulse } from './pulse';
+import { ClipPlayer } from './clipPlayer';
+import { kokoro } from './kokoro';
+import { DEFAULT_KOKORO_VOICE, voiceChoice, type VoiceChoice } from './kokoroConfig';
+import { SystemVoice, type Sink } from './systemVoice';
 import { SentenceChunker, speakable } from './text';
 
 export interface SpeakOptions {
   enabled: boolean;
   rate: number;
-  /** Preferred voice name; empty → best available. */
+  /** settings.voice.ttsVoice: a Kokoro voice id, 'system', or a system voice's name. Empty → the default. */
   voice: string;
 }
 
-/** How often to reset the synthesiser's watchdog while it has work queued. */
-const KEEPALIVE_MS = 10_000;
+/** How long a reply waits for Kokoro to finish loading before the system voice takes it. */
+const KOKORO_WAIT_MS = 3000;
+/** After the system voice stops, the room still carries it this long (no echo reference for it). */
+const SYSTEM_TAIL_MS = 350;
+/** A finished sentence with nothing after it for this long is spoken without waiting for more. */
+const SETTLE_MS = 250;
 
-// Novelty voices that ship with macOS. Never pick these by default.
-const NOVELTY =
-  /^(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|junior|ralph|kathy|fred|deranged|hysterical|pipe organ)\b/i;
+type Engine = 'kokoro' | 'system';
 
-/** Rank a voice: Premium/Enhanced/Siri first, then the good stock voices. */
-export function scoreVoice(v: Pick<SpeechSynthesisVoice, 'name' | 'lang' | 'localService'>): number {
-  if (!/^en([-_]|$)/i.test(v.lang)) return -1;
-  if (NOVELTY.test(v.name)) return 0;
-  let s = 1;
-  if (/premium/i.test(v.name)) s += 100;
-  else if (/enhanced/i.test(v.name)) s += 90;
-  else if (/siri/i.test(v.name)) s += 80;
-  if (/samantha/i.test(v.name)) s += 30;
-  else if (/\bava\b/i.test(v.name)) s += 28;
-  else if (/\bzoe\b/i.test(v.name)) s += 26;
-  else if (/allison/i.test(v.name)) s += 24;
-  if (/en[-_]us/i.test(v.lang)) s += 6;
-  else if (/en[-_]gb/i.test(v.lang)) s += 4;
-  if (v.localService) s += 3;
-  return s;
+interface Line {
+  text: string;
+  choice: VoiceChoice;
+  rate: number;
 }
 
-export function pickVoice(voices: SpeechSynthesisVoice[], preferred: string): SpeechSynthesisVoice | null {
-  if (preferred) {
-    const exact = voices.find((v) => v.name === preferred);
-    if (exact) return exact;
-  }
-  let best: SpeechSynthesisVoice | null = null;
-  let bestScore = 0;
-  for (const v of voices) {
-    const s = scoreVoice(v);
-    if (s > bestScore) {
-      best = v;
-      bestScore = s;
-    }
-  }
-  return best;
-}
+const kokoroVoice = (c: VoiceChoice) => (c.engine === 'kokoro' ? c.voice : DEFAULT_KOKORO_VOICE);
 
 export class Speaker {
-  private chunker = new SentenceChunker();
+  /** A short first chunk: Kokoro takes about 12ms per character, so a 40-character opening is heard ~0.4s sooner than a whole sentence. */
+  private chunker = new SentenceChunker(120, 48);
   private turnId: string | null = null;
   /** Turns the user talked over: late deltas for them are dropped. */
   private muted = new Set<string>();
-  private live = new Set<SpeechSynthesisUtterance>();
   private gen = 0;
-  private voices: SpeechSynthesisVoice[] = [];
+  /** Sentences handed to a voice that haven't finished yet. */
+  private outstanding = 0;
+  /** The voice of the current run of speech. Chosen afresh once nothing is outstanding. */
+  private engine: Engine | null = null;
+  /** Sentences waiting for Kokoro to finish loading, in order. */
+  private held: Line[] = [];
   private audible = false;
   private quietTimer: ReturnType<typeof setTimeout> | undefined;
-  private keepAlive: ReturnType<typeof setInterval> | undefined;
+  private settleTimer: ReturnType<typeof setTimeout> | undefined;
+  private system = new SystemVoice();
+  private player = new ClipPlayer();
   opts: SpeakOptions = { enabled: true, rate: 1.05, voice: '' };
   /** Called when the voice becomes audible / falls silent. */
   onSpeaking: (speaking: boolean) => void = () => {};
-
-  constructor() {
-    if (!this.supported) return;
-    const load = () => (this.voices = speechSynthesis.getVoices());
-    load();
-    speechSynthesis.addEventListener?.('voiceschanged', load);
-  }
+  /** Called when a reply's voice gets under way, and once all of it has been said (or cut off). */
+  onActive: (active: boolean) => void = () => {};
+  private active = false;
+  /** The turn whose sentences are being spoken and whose end hasn't arrived yet. */
+  private openTurn: string | null = null;
+  /** The voice of the reply under way (kept through the gaps between sentences). */
+  private activeEngine: Engine | null = null;
+  /** The system voice's tail still rings in the room until then (performance.now() ms). */
+  private systemTailUntil = 0;
 
   get supported(): boolean {
-    return typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined';
+    return this.system.supported || kokoro.supported;
   }
 
   get speaking(): boolean {
     return this.audible;
+  }
+
+  get isActive(): boolean {
+    return this.active;
+  }
+
+  /**
+   * How loud Archie is around `now` (performance.now() ms), for telling his
+   * echo from a person: null when that can't be known (the system voice plays
+   * outside the page).
+   */
+  echoAt(now: number): number | null {
+    if (this.activeEngine === 'system' && (this.active || this.audible)) return null;
+    if (performance.now() < this.systemTailUntil) return null;
+    return this.player.levelAt(now);
+  }
+
+  /** Dip the voice while the mic decides whether someone is talking over it. */
+  duck(on: boolean): void {
+    this.player.duck(on);
+  }
+
+  private setActive(on: boolean): void {
+    if (on === this.active) return;
+    this.active = on;
+    if (!on) {
+      if (this.activeEngine === 'system') this.systemTailUntil = performance.now() + SYSTEM_TAIL_MS;
+      this.activeEngine = null;
+    }
+    this.onActive(on);
+  }
+
+  /** Nothing left to say and nothing more coming: the reply is over. */
+  private settle(): void {
+    if (this.outstanding === 0 && !this.held.length && this.openTurn === null) this.setActive(false);
+  }
+
+  /** Load Kokoro in the background before the first reply needs it. */
+  prewarm(): void {
+    const choice = voiceChoice(this.opts.voice);
+    if (!this.opts.enabled || choice.engine !== 'kokoro' || !kokoro.supported) return;
+    const run = () => void kokoro.load(choice.voice);
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 1500 });
+    else run();
   }
 
   /**
@@ -134,7 +174,20 @@ export class Speaker {
       this.turnId = turnId;
       this.chunker.reset();
     }
-    for (const chunk of this.chunker.push(text)) this.say(chunk);
+    for (const chunk of this.chunker.push(text)) {
+      this.openTurn = turnId;
+      this.say(chunk);
+    }
+    // A sentence that ends right where the stream paused (the lead went to read code) is spoken after a beat.
+    clearTimeout(this.settleTimer);
+    this.settleTimer = setTimeout(() => {
+      if (this.turnId !== turnId || this.isMuted(turnId)) return;
+      const rest = this.chunker.settled();
+      if (rest) {
+        this.openTurn = turnId;
+        this.say(rest);
+      }
+    }, SETTLE_MS);
   }
 
   /** The reply is complete: speak what's left (or all of it, if nothing streamed). */
@@ -149,63 +202,80 @@ export class Speaker {
       for (const chunk of this.chunker.push(text)) this.say(chunk);
     }
     for (const chunk of this.chunker.flush()) this.say(chunk);
+    if (this.openTurn === turnId) this.openTurn = null;
+    this.settle();
   }
 
   say(raw: string): void {
     const text = speakable(raw);
     if (!text || !this.opts.enabled || !this.supported) return;
-    const u = new SpeechSynthesisUtterance(text);
-    const voice = pickVoice(this.voices, this.opts.voice);
-    if (voice) {
-      u.voice = voice;
-      u.lang = voice.lang;
+    this.queue({ text, choice: voiceChoice(this.opts.voice), rate: this.opts.rate });
+  }
+
+  /** A sample of a voice (while choosing one), even with replies muted. Whatever was playing stops. */
+  preview(raw: string, voice: string): void {
+    this.cancel();
+    const text = speakable(raw);
+    if (text && this.supported) this.queue({ text, choice: voiceChoice(voice), rate: this.opts.rate });
+  }
+
+  private queue(line: Line): void {
+    if (this.held.length) {
+      this.held.push(line);
+      return;
     }
-    u.rate = this.opts.rate;
+    if (this.outstanding === 0) this.engine = null;
+    this.engine ??= this.pick(line.choice);
+    if (this.engine) this.send(line);
+    else this.waitForKokoro(line);
+  }
+
+  /** The voice for a new run, or null to wait for Kokoro (it is loading, or about to). */
+  private pick(choice: VoiceChoice): Engine | null {
+    const wantKokoro = choice.engine === 'kokoro' || !this.system.supported;
+    if (!wantKokoro || !kokoro.supported || kokoro.failed) return 'system';
+    return kokoro.isReady ? 'kokoro' : null;
+  }
+
+  private waitForKokoro(line: Line): void {
+    this.held.push(line);
     const gen = this.gen;
-    u.onstart = () => {
-      if (gen === this.gen) this.setAudible(true);
-    };
-    u.onboundary = (e) => {
-      if (gen === this.gen && e.name === 'word') speechPulse(Math.min(1, 0.45 + (e.charLength || 4) / 10));
-    };
-    const finish = () => {
-      this.live.delete(u);
-      if (this.live.size === 0) this.stopKeepAlive();
-      if (gen === this.gen && this.live.size === 0) this.setAudible(false);
-    };
-    u.onend = finish;
-    u.onerror = finish;
-    // Hold a reference: Chrome drops events for utterances that get garbage-collected.
-    this.live.add(u);
-    // A cancel() (or a stalled keep-alive ping) can leave the synthesiser
-    // paused; anything queued onto it then never starts.
-    if (speechSynthesis.paused) speechSynthesis.resume?.();
-    speechSynthesis.speak(u);
-    this.startKeepAlive();
+    void kokoro.load(kokoroVoice(line.choice));
+    void kokoro.readyWithin(KOKORO_WAIT_MS).then((ok) => {
+      if (gen !== this.gen) return;
+      this.engine = ok ? 'kokoro' : 'system';
+      const held = this.held;
+      this.held = [];
+      for (const l of held) this.send(l);
+    });
   }
 
-  /**
-   * Chromium stops speaking after roughly fifteen seconds of a continuous run
-   * and leaves the rest of the queue stuck — the voice starts, then simply
-   * falls silent part-way through a reply. A pause/resume pair resets that
-   * watchdog and is inaudible, so ping it while anything is still outstanding.
-   */
-  private startKeepAlive(): void {
-    if (this.keepAlive !== undefined || !this.supported) return;
-    this.keepAlive = setInterval(() => {
-      if (this.live.size === 0) {
-        this.stopKeepAlive();
-        return;
-      }
-      if (!speechSynthesis.speaking) return;
-      speechSynthesis.pause?.();
-      speechSynthesis.resume?.();
-    }, KEEPALIVE_MS);
-  }
-
-  private stopKeepAlive(): void {
-    clearInterval(this.keepAlive);
-    this.keepAlive = undefined;
+  private send(line: Line): void {
+    const gen = this.gen;
+    this.outstanding++;
+    this.activeEngine = this.engine;
+    this.setActive(true);
+    const sink: Sink = {
+      start: () => {
+        if (gen === this.gen) this.setAudible(true);
+      },
+      end: () => {
+        if (gen !== this.gen) return;
+        this.outstanding = Math.max(0, this.outstanding - 1);
+        if (this.outstanding === 0) this.setAudible(false);
+        this.settle();
+      },
+    };
+    if (this.engine === 'kokoro') {
+      // Clips come back in the order asked for, so they play in order too.
+      void kokoro.synth(line.text, kokoroVoice(line.choice), line.rate).then((clip) => {
+        if (gen !== this.gen) return;
+        if (clip) this.player.play(clip, sink);
+        else sink.end();
+      });
+    } else if (this.system.supported) {
+      this.system.say(line.text, { voice: line.choice.engine === 'system' ? line.choice.voice : '', rate: line.rate }, sink);
+    } else sink.end();
   }
 
   /** Barge-in: stop mid-word, drop the queue, ignore the rest of this turn. */
@@ -214,14 +284,20 @@ export class Speaker {
     if (this.turnId) this.muted.add(this.turnId);
     if (this.muted.size > 20) this.muted = new Set([...this.muted].slice(-10));
     this.chunker.reset();
-    this.live.clear();
-    this.stopKeepAlive();
-    if (this.supported) speechSynthesis.cancel();
+    clearTimeout(this.settleTimer);
+    this.outstanding = 0;
+    this.engine = null;
+    this.held = [];
+    this.openTurn = null;
+    this.player.stop();
+    kokoro.drop();
+    this.system.cancel();
     clearTimeout(this.quietTimer);
     if (this.audible) {
       this.audible = false;
       this.onSpeaking(false);
     }
+    this.setActive(false);
   }
 
   private setAudible(on: boolean): void {
@@ -235,7 +311,7 @@ export class Speaker {
     }
     // A short grace so the gap between two sentences doesn't flicker.
     this.quietTimer = setTimeout(() => {
-      if (this.live.size === 0 && this.audible) {
+      if (this.outstanding === 0 && this.audible) {
         this.audible = false;
         this.onSpeaking(false);
       }

@@ -15,6 +15,8 @@ export default defineConfig({
   },
   plugins: [react()],
   worker: { format: 'es' },
-  optimizeDeps: { exclude: ['@huggingface/transformers'] },
+  // kokoro-js is only imported by a worker, which the dep scan never sees: name it so
+  // Vite doesn't discover it mid-session and reload the page.
+  optimizeDeps: { exclude: ['@huggingface/transformers'], include: ['kokoro-js'] },
   server: { port: 5199, strictPort: true },
 });

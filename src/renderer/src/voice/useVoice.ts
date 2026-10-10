@@ -1,5 +1,6 @@
 // Wires the voice machinery into the app while a project is open:
-//   - the lead's streaming reply → speech, sentence by sentence
+//   - the lead's streaming reply → speech, sentence by sentence (Kokoro loads
+//     in the background as soon as a project is open)
 //   - speech audible ↔ store.voice.speaking (and a stricter VAD meanwhile)
 //   - settings.voice → hands-free, speak, rate, voice
 //   - the controller's hooks → the caller's conversation logic
@@ -10,6 +11,7 @@ import { ui, useIae } from '../state/store';
 import type { Settings } from '@shared/model';
 import { voice, type VoiceHooks } from './controller';
 import { speechPulse } from './pulse';
+import { turnTrace } from './trace';
 import { tts } from './tts';
 
 export function useVoice(hooks: VoiceHooks): void {
@@ -25,13 +27,16 @@ export function useVoice(hooks: VoiceHooks): void {
     };
 
     tts.onSpeaking = (on) => {
+      if (on) turnTrace.mark('voice');
       ui.voice({ speaking: on });
-      voice.setLeadSpeaking(on);
     };
+    // The mic listens differently for the whole of a reply, gaps between sentences included.
+    tts.onActive = (on) => voice.setLeadSpeaking(on);
 
     const apply = (v: Settings['voice']) => {
       tts.opts = { enabled: v.speak, rate: v.rate, voice: v.ttsVoice };
       if (!v.speak) tts.cancel();
+      else tts.prewarm();
       void voice.setHandsFree(v.handsFree);
     };
     apply(useIae.getState().settings.voice);
@@ -41,12 +46,14 @@ export function useVoice(hooks: VoiceHooks): void {
 
     const offEvents = bridge.onEvent((e) => {
       if (e.type === 'lead/delta') {
+        if (/\S/.test(e.text)) turnTrace.mark('words');
         if (tts.opts.enabled && tts.supported) {
           // Never start speaking over someone who is talking.
-          if (useIae.getState().voice.mic === 'hearing') tts.muteIfNew(e.turnId);
+          if (voice.userTalking) tts.muteIfNew(e.turnId);
           tts.delta(e.turnId, e.text);
         } else if (/\S/.test(e.text)) speechPulse(0.6); // no voice: the mouth follows the words
       } else if (e.type === 'lead/done') {
+        if (!e.text) turnTrace.drop();
         // Always passed on (even empty), so a skipped turn that said nothing still clears.
         if (tts.opts.enabled && tts.supported) tts.done(e.turnId, e.text);
       } else if (e.type === 'project/opened' || e.type === 'project/closed') {
@@ -64,6 +71,7 @@ export function useVoice(hooks: VoiceHooks): void {
       offSettings();
       tts.cancel();
       tts.onSpeaking = () => {};
+      tts.onActive = () => {};
       voice.dispose();
       voice.hooks = { onStart() {}, onInterim() {}, onFinal() {}, onDiscard() {} };
       ui.voice({ mic: 'off', speaking: false, level: 0, interim: '', loadProgress: undefined, error: undefined });

@@ -42,7 +42,8 @@ const page = await browser.newPage({ viewport: { width: w, height: h }, deviceSc
 const logs = [];
 page.on('console', (m) => (m.type() === 'error' || m.type() === 'warning') && logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
-await page.goto(url, { waitUntil: 'networkidle' });
+// 'load', not 'networkidle': the speech models download in the background and keep the network busy.
+await page.goto(url, { waitUntil: 'load' });
 await page.waitForTimeout(800);
 for (const js of opt.evals) {
   await page.evaluate(js);

@@ -95,6 +95,8 @@ export interface IaeState {
     /** Last completed reply. */
     lastText: string;
     lastAt: number;
+    /** The turn in flight has said something (an opener before its tools counts). */
+    spoke: boolean;
   };
 
   voice: VoiceState;
@@ -138,7 +140,7 @@ export const initialState = (): IaeState => ({
   agentSteps: {},
   decisions: [],
   transcript: [],
-  lead: { state: 'idle', turnId: null, text: '', lastText: '', lastAt: 0 },
+  lead: { state: 'idle', turnId: null, text: '', lastText: '', lastAt: 0, spoke: false },
   voice: { mic: 'off', speaking: false, level: 0, interim: '' },
   ghosts: {},
   ghostDraftId: null,
@@ -179,7 +181,7 @@ export function reduce(s: IaeState, e: EngineEvent): Partial<IaeState> {
         scopeId: null,
         selectedNodeId: null,
         openFile: null,
-        lead: { state: 'idle', turnId: null, text: '', lastText: '', lastAt: 0 },
+        lead: { state: 'idle', turnId: null, text: '', lastText: '', lastAt: 0, spoke: false },
       };
     }
     case 'project/closed':
@@ -231,10 +233,11 @@ export function reduce(s: IaeState, e: EngineEvent): Partial<IaeState> {
     }
 
     case 'lead/state':
-      return { lead: { ...s.lead, state: e.state } };
+      // A new turn (from idle) hasn't said anything yet.
+      return { lead: { ...s.lead, state: e.state, spoke: s.lead.state === 'idle' ? false : s.lead.spoke } };
     case 'lead/delta': {
       const fresh = s.lead.turnId !== e.turnId;
-      return { lead: { ...s.lead, state: 'replying', turnId: e.turnId, text: (fresh ? '' : s.lead.text) + e.text } };
+      return { lead: { ...s.lead, state: 'replying', turnId: e.turnId, text: (fresh ? '' : s.lead.text) + e.text, spoke: s.lead.spoke || /\S/.test(e.text) } };
     }
     case 'lead/done':
       return {

@@ -6,6 +6,7 @@
 
 import { env, pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers';
 import { DTYPES, type SttDevice, type SttRequest, type SttResponse } from './sttConfig';
+import { hasWebGPU, modelFetch, useLocalRuntime } from './workerFetch';
 
 declare const self: DedicatedWorkerGlobalScope;
 
@@ -13,61 +14,6 @@ let asr: AutomaticSpeechRecognitionPipeline | null = null;
 let loading: Promise<void> | null = null;
 
 const post = (msg: SttResponse) => self.postMessage(msg);
-
-/**
- * fetch() for model files. It reads file:// URLs with XHR (fetch can't; the
- * packaged app reads resources/ that way), and treats an HTML page served for
- * a missing local file (a dev server's SPA fallback) as the 404 it really is.
- */
-async function modelFetch(input: string | URL, init?: RequestInit): Promise<Response> {
-  const url = String(input);
-  if (url.startsWith('file:')) return readFileUrl(url);
-  const res = await fetch(input, init);
-  if (res.ok && !/^https?:/.test(url) && /text\/html/.test(res.headers.get('content-type') ?? '') && !/\.html?$/.test(url)) {
-    return new Response(null, { status: 404 });
-  }
-  return res;
-}
-
-function readFileUrl(url: string): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('GET', url);
-    xhr.responseType = 'arraybuffer';
-    xhr.onload = () => {
-      const ok = xhr.status === 0 || (xhr.status >= 200 && xhr.status < 300);
-      if (!ok || !xhr.response) return resolve(new Response(null, { status: 404 }));
-      const body = xhr.response as ArrayBuffer;
-      resolve(new Response(body, { status: 200, headers: { 'content-length': String(body.byteLength) } }));
-    };
-    xhr.onerror = () => reject(new Error(`Could not read ${url}`));
-    xhr.send();
-  });
-}
-
-/** Serve ONNX Runtime's wasm from resources/ too, so the first run needs no CDN. */
-async function useLocalRuntime(base: string): Promise<void> {
-  const wasm = `${base}ort-wasm-simd-threaded.asyncify.wasm`;
-  const mjs = `${base}ort-wasm-simd-threaded.asyncify.mjs.txt`;
-  try {
-    const probe = await modelFetch(mjs);
-    if (!probe.ok) return;
-    const onnx = env.backends.onnx as { wasm?: { wasmPaths?: unknown } };
-    if (onnx.wasm) onnx.wasm.wasmPaths = { wasm: new URL(wasm, self.location.href).href, mjs: new URL(mjs, self.location.href).href };
-  } catch {
-    // Not there: the runtime comes from the CDN and is cached after first use.
-  }
-}
-
-async function hasWebGPU(): Promise<boolean> {
-  const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
-  if (!gpu) return false;
-  try {
-    return !!(await gpu.requestAdapter());
-  } catch {
-    return false;
-  }
-}
 
 async function load(msg: Extract<SttRequest, { type: 'load' }>): Promise<void> {
   const t0 = performance.now();

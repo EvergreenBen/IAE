@@ -1,12 +1,19 @@
 #!/usr/bin/env node
-// Download the on-device speech-to-text model into resources/models/ so voice
-// works offline and starts without a network round trip.
+// Download the on-device voice models into resources/models/ so voice works
+// offline and starts without a network round trip:
+//   - Whisper (speech-to-text)
+//   - Kokoro (Archie's voice, text-to-speech)
 //
-//   npm run voice:setup                         # default model (whisper-base.en)
+//   npm run voice:setup                         # default models
 //   node scripts/fetch-voice-models.mjs onnx-community/whisper-small.en
 //
+// Runs on `npm install` too (postinstall). There it never fails the install:
+// whatever it can't fetch downloads from Hugging Face on first use instead.
+// Set ARXITECT_SKIP_VOICE_MODELS=1 to skip it.
+//
 // Idempotent: files already present with the right size are skipped.
-// Keep the ONNX file list in sync with DTYPES in src/renderer/src/voice/sttConfig.ts.
+// Keep the ONNX file lists in sync with DTYPES in src/renderer/src/voice/sttConfig.ts
+// and KOKORO_DTYPES in src/renderer/src/voice/kokoroConfig.ts.
 import { copyFileSync, createWriteStream, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { Readable } from 'node:stream';
@@ -14,43 +21,58 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const MODEL = process.argv[2] || 'onnx-community/whisper-base.en';
+const args = process.argv.slice(2);
+const POSTINSTALL = args.includes('--postinstall');
 const HOST = process.env.HF_ENDPOINT || 'https://huggingface.co';
-const OUT = join(ROOT, 'resources', 'models', MODEL);
+const MODELS = join(ROOT, 'resources', 'models');
 
-// What transformers.js loads for Whisper with our dtypes:
-//   WebGPU → encoder fp32 + decoder q4      wasm → encoder q8 + decoder q8
-const ONNX = ['onnx/encoder_model.onnx', 'onnx/decoder_model_merged_q4.onnx', 'onnx/encoder_model_quantized.onnx', 'onnx/decoder_model_merged_quantized.onnx'];
-const META = [
-  'config.json',
-  'generation_config.json',
-  'preprocessor_config.json',
-  'tokenizer.json',
-  'tokenizer_config.json',
-  'special_tokens_map.json',
-  'added_tokens.json',
-  'normalizer.json',
-  'vocab.json',
-  'merges.txt',
-];
+const WHISPER = {
+  label: 'Speech to text',
+  id: args.find((a) => !a.startsWith('--')) || 'onnx-community/whisper-base.en',
+  // What transformers.js loads for Whisper with our dtypes:
+  //   WebGPU → encoder fp32 + decoder q4      wasm → encoder q8 + decoder q8
+  onnx: ['onnx/encoder_model.onnx', 'onnx/decoder_model_merged_q4.onnx', 'onnx/encoder_model_quantized.onnx', 'onnx/decoder_model_merged_quantized.onnx'],
+  meta: [
+    'config.json',
+    'generation_config.json',
+    'preprocessor_config.json',
+    'tokenizer.json',
+    'tokenizer_config.json',
+    'special_tokens_map.json',
+    'added_tokens.json',
+    'normalizer.json',
+    'vocab.json',
+    'merges.txt',
+  ],
+};
+
+const KOKORO = {
+  label: "Archie's voice",
+  id: 'onnx-community/Kokoro-82M-v1.0-ONNX',
+  //   WebGPU → fp32      wasm → q8
+  onnx: ['onnx/model.onnx', 'onnx/model_quantized.onnx'],
+  meta: ['config.json', 'tokenizer.json', 'tokenizer_config.json'],
+  // The English voices (half a megabyte each), so switching voice needs no network.
+  extra: (path) => /^voices\/[ab][fm]_\w+\.bin$/.test(path),
+};
 
 const mb = (n) => `${(n / 1048576).toFixed(1)} MB`;
 
-async function listRepo() {
-  const res = await fetch(`${HOST}/api/models/${MODEL}/tree/main?recursive=true`);
-  if (!res.ok) throw new Error(`Could not list ${MODEL}: HTTP ${res.status}`);
+async function listRepo(model) {
+  const res = await fetch(`${HOST}/api/models/${model}/tree/main?recursive=true`);
+  if (!res.ok) throw new Error(`Could not list ${model}: HTTP ${res.status}`);
   const entries = await res.json();
   return new Map(entries.filter((e) => e.type === 'file').map((e) => [e.path, e.lfs?.size ?? e.size]));
 }
 
-async function download(file, size) {
-  const dest = join(OUT, file);
+async function download(model, file, size) {
+  const dest = join(MODELS, model, file);
   if (existsSync(dest) && (size == null || statSync(dest).size === size)) {
     console.log(`  ✓ ${file} (${mb(statSync(dest).size)}, cached)`);
     return;
   }
   mkdirSync(dirname(dest), { recursive: true });
-  const res = await fetch(`${HOST}/${MODEL}/resolve/main/${file}`);
+  const res = await fetch(`${HOST}/${model}/resolve/main/${file}`);
   if (!res.ok || !res.body) throw new Error(`${file}: HTTP ${res.status}`);
   const total = Number(res.headers.get('content-length')) || size || 0;
   let loaded = 0;
@@ -77,39 +99,61 @@ async function download(file, size) {
   console.log(`  ✓ ${file} (${mb(loaded)})`);
 }
 
-console.log(`Voice model: ${MODEL}`);
-console.log(`Into: ${OUT}`);
-const files = await listRepo();
-const wanted = [...META.filter((f) => files.has(f)), ...ONNX];
-const missing = ONNX.filter((f) => !files.has(f));
-if (missing.length) {
-  console.error(`This model has no ${missing.join(', ')}. Pick a model exported for transformers.js (onnx-community/*).`);
-  process.exit(1);
+async function fetchModel({ label, id, onnx, meta, extra }) {
+  console.log(`${label}: ${id}`);
+  console.log(`Into: ${join(MODELS, id)}`);
+  const files = await listRepo(id);
+  const missing = onnx.filter((f) => !files.has(f));
+  if (missing.length) {
+    throw new Error(`${id} has no ${missing.join(', ')}. Pick a model exported for transformers.js (onnx-community/*).`);
+  }
+  const wanted = [...meta.filter((f) => files.has(f)), ...onnx, ...(extra ? [...files.keys()].filter(extra).sort() : [])];
+  const totalBytes = wanted.reduce((s, f) => s + (files.get(f) ?? 0), 0);
+  console.log(`${wanted.length} files, ${mb(totalBytes)} in all\n`);
+  for (const f of wanted) await download(id, f, files.get(f));
+  console.log('');
 }
-const totalBytes = wanted.reduce((s, f) => s + (files.get(f) ?? 0), 0);
-console.log(`${wanted.length} files, ${mb(totalBytes)} in all\n`);
-for (const f of wanted) await download(f, files.get(f));
+
 // ONNX Runtime's wasm, so the very first run needs no CDN either. The factory
 // gets a .txt suffix so dev servers hand it over as-is instead of transforming
 // it as a module (transformers.js loads it through a blob URL).
-const ORT_SRC = join(ROOT, 'node_modules', 'onnxruntime-web', 'dist');
-const ORT_OUT = join(ROOT, 'resources', 'models', 'ort');
-if (existsSync(ORT_SRC)) {
-  mkdirSync(ORT_OUT, { recursive: true });
+function copyRuntime() {
+  const src = join(ROOT, 'node_modules', 'onnxruntime-web', 'dist');
+  const out = join(MODELS, 'ort');
+  if (!existsSync(src)) return;
+  mkdirSync(out, { recursive: true });
   for (const [from, to] of [
     ['ort-wasm-simd-threaded.asyncify.wasm', 'ort-wasm-simd-threaded.asyncify.wasm'],
     ['ort-wasm-simd-threaded.asyncify.mjs', 'ort-wasm-simd-threaded.asyncify.mjs.txt'],
   ]) {
-    const src = join(ORT_SRC, from);
-    const dest = join(ORT_OUT, to);
-    if (!existsSync(src)) continue;
-    if (existsSync(dest) && statSync(dest).size === statSync(src).size && statSync(dest).mtimeMs >= statSync(src).mtimeMs) {
+    const from_ = join(src, from);
+    const dest = join(out, to);
+    if (!existsSync(from_)) continue;
+    if (existsSync(dest) && statSync(dest).size === statSync(from_).size && statSync(dest).mtimeMs >= statSync(from_).mtimeMs) {
       console.log(`  ✓ ort/${to} (cached)`);
       continue;
     }
-    copyFileSync(src, dest);
+    copyFileSync(from_, dest);
     console.log(`  ✓ ort/${to} (${mb(statSync(dest).size)})`);
   }
 }
 
-console.log('\nDone. Voice works offline now.');
+if (POSTINSTALL && process.env.ARXITECT_SKIP_VOICE_MODELS) {
+  console.log('Voice models: skipped (ARXITECT_SKIP_VOICE_MODELS is set). They download on first use.');
+  process.exit(0);
+}
+
+let failed = false;
+for (const model of [WHISPER, KOKORO]) {
+  try {
+    await fetchModel(model);
+  } catch (err) {
+    failed = true;
+    console.error(`  ✗ ${model.label}: ${err instanceof Error ? err.message : err}\n`);
+  }
+}
+copyRuntime();
+
+if (!failed) console.log('\nDone. Voice works offline now.');
+else if (POSTINSTALL) console.warn('\nSome voice models did not download. They download on first use instead, or run `npm run voice:setup` later.');
+else process.exit(1);
