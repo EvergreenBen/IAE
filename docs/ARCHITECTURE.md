@@ -261,8 +261,11 @@ them on first use.
   the turn (`turnEndMs`): ~0.45s after a question, ~0.5s after a finished
   sentence, ~1.3s after "and…". Push-to-talk (hold Space) is always
   available. Interim transcripts run roughly every 1s on the growing buffer
-  and feed `draft()`. Each spoken turn logs one `[voice:turn]` line: stop →
-  text, sent, first words, voice.
+  and feed `draft()`. An utterance is captured from where the speech really
+  began (`Vad.speechFrames`, up to 1.5s back), not just a fixed pre-roll: over
+  Archie the onset is stricter, and a short first word ("What…") used to fall
+  before it. Each spoken turn logs one `[voice:turn]` line: stop → text, sent,
+  first words, chunk (handed to the voice), clip (its audio ready), voice.
 - **Talking over Archie**: while a reply is under way (`tts.onActive`, gaps
   between sentences included) the mic compares itself with what Kokoro is
   playing (`ClipPlayer.levelAt`, the loudest 20ms of the last 300ms) times a
@@ -276,15 +279,21 @@ them on first use.
   speaks). It loads when the app starts. A reply never switches voice: one
   that arrives before Kokoro is ready waits up to 12s for it, then stays
   silent (the caption still shows it). Speech is chunked by sentence as
-  `lead/delta` streams; the first chunk is cut at about 48 characters, at a
-  comma or before a joining word, so sound starts sooner. The worker turns
+  `lead/delta` streams; the first chunk is cut at its first natural phrase
+  within about 48 characters (a comma, else before a joining word or
+  preposition, never under 20), and the second within about 96, so sound
+  starts sooner and the next clip is ready before the first ends. When the
+  lead's tools start, the engine sends a break after what was said, so the
+  opener ("Let me look at the jobs worker.") is spoken at once instead of
+  after a settle timer. The worker turns
   chunks into 24kHz clips in order, and the renderer schedules them back to
   back on the AudioContext clock (no gaps, and no reliance on `ended` events,
   which can arrive seconds late). Mouth pulses come from loudness peaks in
-  each clip. `speechSynthesis` (best installed voice)
-  stands in when Kokoro can't run, when the user picks it, or for a reply that
-  starts more than 3s before Kokoro is ready. A run of speech never switches
-  voice mid-reply. Barge-in stops playback, drops the worker's queue, cancels
+  each clip. `speechSynthesis` (best installed voice) speaks only when Kokoro
+  can't run or the user picks it. The caption keeps pace with the voice: the
+  Speaker reports each chunk as it starts playing (`voice.said`), and the
+  caption reveals that chunk's words across its length. The person's last
+  words stay in the intent line (`voice.heard`) until the answer is audible. Barge-in stops playback, drops the worker's queue, cancels
   `speechSynthesis` and calls `bridge.interrupt()`.
 - Models download on first use, or ahead of time with `npm run voice:setup`.
   The renderer CSP allows huggingface.co for that.

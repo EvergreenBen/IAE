@@ -10,7 +10,7 @@ const k = vi.hoisted(() => ({
   failed: false,
   load: vi.fn(() => Promise.resolve(true)),
   readyWithin: vi.fn((_ms: number) => Promise.resolve(false)),
-  synth: vi.fn((text: string, _voice: string, _speed: number) => Promise.resolve({ text } as unknown)),
+  synth: vi.fn((text: string, _voice: string, _speed: number) => Promise.resolve({ text, audio: new Float32Array(2400), sampleRate: 24000 } as unknown)),
   drop: vi.fn(),
 }));
 const player = vi.hoisted(() => ({ played: [] as string[], sinks: [] as Sink[], ducked: false, level: 0 }));

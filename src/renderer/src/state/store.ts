@@ -44,6 +44,17 @@ export interface Notice {
 /** Renderer-side voice state, written by src/renderer/src/voice. */
 export type MicState = 'off' | 'idle' | 'hearing' | 'transcribing' | 'loading' | 'error';
 
+/** The reply the voice is speaking, and how far through it the voice has got. */
+export interface Said {
+  turnId: string;
+  /** Words in the chunks spoken before the current one. */
+  before: number;
+  /** The chunk being spoken: its words, when it started (performance.now() ms) and how long it lasts. */
+  chunk: { words: number; at: number; ms: number } | null;
+  /** The voice is finished with this reply (said it all, was cut off, or won't speak it). */
+  done: boolean;
+}
+
 export interface VoiceState {
   mic: MicState;
   /** Lead's speech is audible right now. */
@@ -52,6 +63,10 @@ export interface VoiceState {
   level: number;
   /** Live transcript of what the user is saying (or typing) right now. */
   interim: string;
+  /** What the user just said, kept in the intent line until the answer begins: Archie heard it. */
+  heard?: string;
+  /** How far the voice has got through the reply it is speaking (the caption keeps pace with it). */
+  said?: Said;
   /** Speech-to-text model download/load progress 0..1, when loading. */
   loadProgress?: number;
   error?: string;

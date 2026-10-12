@@ -1,7 +1,8 @@
-// The lead's words, centred above the intent line. Words fade in as they
-// stream; the caption lingers after the voice stops (longer for longer
-// replies), then fades. While the lead is only thinking there is no caption:
-// Archie's face says it. Click opens the transcript.
+// The lead's words, centred above the intent line. Words fade in as they are
+// said (as they stream, when the voice isn't speaking them); the caption
+// lingers after the voice stops (longer for longer replies), then fades. While
+// the lead is only thinking there is no caption: Archie's face says it. Click
+// opens the transcript.
 //
 // At most three lines. A reply that outgrows them shows its latest *whole*
 // sentences (measured, not guessed), so the caption never starts mid-line.
@@ -9,7 +10,8 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { ui, useIae } from '../state/store';
-import { lingerMs, sentenceStarts, tokens, wordStarts } from './captionText';
+import { wordsSaid } from '../voice/said';
+import { lingerMs, sentenceStarts, tokens, wordsEnd, wordStarts } from './captionText';
 import styles from './Caption.module.css';
 
 const MAX_LINES = 3;
@@ -31,9 +33,36 @@ function useCaption(): { text: string; turn: string } | null {
     return () => clearTimeout(t);
   }, [settled, text, turn]);
 
-  if (open || state === 'thinking' || !text.trim()) return null;
+  const said = useSaid(turn, text);
+  const shown = said === null ? text : text.slice(0, wordsEnd(text, said));
+  if (open || state === 'thinking' || !shown.trim()) return null;
   if (expired === `${turn}:${text.length}`) return null;
-  return { text, turn };
+  return { text: shown, turn };
+}
+
+/**
+ * How many of this reply's words the voice has said, or null when the voice
+ * isn't speaking it (then the caption shows the words as they stream).
+ * Re-renders while a chunk is being spoken, so its words appear in step.
+ */
+function useSaid(turn: string, text: string): number | null {
+  const said = useIae((s) => s.voice.said);
+  const voiced = said && said.turnId === turn && !said.done ? said : null;
+  const [now, setNow] = useState(() => performance.now());
+  const chunk = voiced?.chunk;
+  useEffect(() => {
+    if (!chunk) return;
+    setNow(performance.now());
+    const t = setInterval(() => {
+      const at = performance.now();
+      setNow(at);
+      if (at > chunk.at + chunk.ms) clearInterval(t);
+    }, 80);
+    return () => clearInterval(t);
+  }, [chunk]);
+  if (!voiced) return null;
+  // `text` is read so a reply that grows mid-chunk re-renders with the same count.
+  return text ? wordsSaid(voiced, now) : 0;
 }
 
 interface Fit {

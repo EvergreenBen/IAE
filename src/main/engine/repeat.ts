@@ -1,11 +1,16 @@
-// A light backstop for one habit the prompt alone doesn't always break: the
-// lead tacking an open card's question onto the end of later replies ("…Still
-// need your call: membership number or a separate account?"). The card is on
-// screen; saying it again is noise. Only near-verbatim repeats (≥ 80% of the
-// words) of a question already raised in an earlier turn are trimmed. In a
-// reply to the person the opening sentence streams live and isn't checked; a
-// nudge (pulse) may bring a card back once while builders work, not again. A
-// question that blocks a builder, or a person asking what's left, lets it through.
+// Light backstops for two habits the prompt alone doesn't always break:
+//
+// - The lead tacking an open card's question onto the end of later replies
+//   ("…Still need your call: membership number or a separate account?"). The
+//   card is on screen; saying it again is noise. Only near-verbatim repeats (≥
+//   80% of the words) of a question already raised in an earlier turn are
+//   trimmed. In a reply to the person the opening sentence streams live and
+//   isn't checked; a nudge (pulse) may bring a card back once while builders
+//   work, not again. A question that blocks a builder, or a person asking
+//   what's left, lets it through.
+// - Talking at the person unprompted. A turn nobody asked for (a finished
+//   build, a nudge) says one sentence, plus a question or the default riding
+//   on one; the rest is left out. The map and the cards carry the detail.
 
 const STOP = new Set(
   `a an the to of for in on at by with and or but if so then than as is are was were be been being do does did done
@@ -184,6 +189,23 @@ export function withoutDropped(text: string, dropped: string[]): string {
   return norm(out);
 }
 
+/**
+ * For a turn nobody asked for: true for each sentence past the first that
+ * isn't a question (or the default after one), and for everything after that.
+ * Call once per sentence, in order.
+ */
+export function unpromptedCap(): (sentence: string) => boolean {
+  let kept: string[] = [];
+  let over = false;
+  return (sentence) => {
+    const s = sentence.trim();
+    const keep = !over && (kept.length === 0 || (kept.length === 1 && (s.endsWith('?') || (kept[0].endsWith('?') && DEFAULT_TAIL.test(s)))));
+    if (keep) kept = [...kept, s];
+    else over = true;
+    return !keep;
+  };
+}
+
 /** Questions the lead asked out loud, remembered to spot it asking them again. */
 const REMEMBER = 30;
 
@@ -207,12 +229,16 @@ export class AskedQuestions {
    * from their first sentence. Null when there's nothing to guard.
    */
   guard(kind: 'user' | 'events' | 'pulse', said: string, open: CardLike[]): RepeatGuard | null {
-    if (asksWhatsOpen(said)) return null;
+    // Unprompted turns are kept short whatever else applies.
+    const cap = kind === 'user' ? null : unpromptedCap();
     const spoken = this.spoken;
     const enough = kind === 'pulse' ? 2 : 1;
-    const cards = open.filter((c) => !c.blocking?.length && timesAsked(c, spoken) >= enough).map(({ id, prompt, createdAt }) => ({ id, prompt, createdAt }));
-    if (!cards.length) return null;
-    return new RepeatGuard((sentence) => repeatsCard(sentence, cards, spoken), kind !== 'user');
+    const cards = asksWhatsOpen(said)
+      ? []
+      : open.filter((c) => !c.blocking?.length && timesAsked(c, spoken) >= enough).map(({ id, prompt, createdAt }) => ({ id, prompt, createdAt }));
+    if (!cards.length) return cap ? new RepeatGuard(cap, true) : null;
+    // A repeat is dropped before it counts towards the cap.
+    return new RepeatGuard((sentence) => repeatsCard(sentence, cards, spoken) || (cap?.(sentence) ?? false), kind !== 'user');
   }
 
   /** A turn ended having said `text`; `newCards` are the cards it put on the map. */

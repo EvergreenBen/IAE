@@ -24,6 +24,19 @@ describe('archieStateFrom', () => {
     expect(archieStateFrom({ ...base, agenda: [q({ priority: 0.3 })] })).toBe('idle');
     expect(archieStateFrom({ ...base, agenda: [q({ priority: 0.9, status: 'answered' })] })).toBe('idle');
   });
+  it('shows it heard the moment their turn ends, and only moves its mouth to words being heard', () => {
+    expect(archieStateFrom({ ...base, voice: { ...base.voice, mic: 'transcribing' } })).toBe('thinking');
+    const said = { turnId: 't1', before: 0, chunk: null, done: false };
+    const replying = { ...base.lead, state: 'replying' as const, turnId: 't1' };
+    // Words are streaming but the voice hasn't started: still thinking, no silent mouth.
+    expect(archieStateFrom({ ...base, lead: replying, voice: { ...base.voice, said } })).toBe('thinking');
+    // Once the voice is under way, gaps between sentences don't flicker back to thinking.
+    const going = { ...said, chunk: { words: 4, at: 0, ms: 900 } };
+    expect(archieStateFrom({ ...base, lead: replying, voice: { ...base.voice, said: going } })).toBe('speaking');
+    // A reply the voice isn't speaking (muted, or voice off): the mouth follows the words.
+    expect(archieStateFrom({ ...base, lead: replying, voice: { ...base.voice, said: { ...said, turnId: 't0' } } })).toBe('speaking');
+  });
+
   it('is away without Claude', () => {
     expect(archieStateFrom({ ...base, claude: 'unavailable' })).toBe('away');
   });

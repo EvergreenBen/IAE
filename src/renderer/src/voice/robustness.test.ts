@@ -101,6 +101,18 @@ describe('talking over a reply that has not started', () => {
     expect(spoken).toEqual(['The answer to what they said.']);
   });
 
+  it('a stale reply that arrives while they are still talking uses up the skip', async () => {
+    const { tts } = await import('./tts');
+    tts.reset();
+    spoken.length = 0;
+    tts.skipPendingTurn(); // they started talking while the greeting was being written
+    tts.muteIfNew('g1'); // the greeting streams in while they're still talking
+    tts.delta('g1', 'Welcome to the recipe app. ');
+    tts.done('g1', 'Welcome to the recipe app.');
+    tts.delta('a1', 'The worker polls a jobs table. ');
+    expect(spoken).toEqual(['The worker polls a jobs table.']);
+  });
+
   it('lets the reply speak if they turned out to say nothing', async () => {
     const { tts } = await import('./tts');
     tts.reset();

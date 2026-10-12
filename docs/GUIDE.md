@@ -98,7 +98,10 @@ question is waiting.
   a second of silence after something that sounds finished ends your turn, and
   it waits longer when you trail off on *"and…"* or *"so…"*. Your words are
   already transcribed by the time your turn ends, so Archie usually starts
-  answering within about two seconds.
+  answering within about two seconds. Meanwhile he shows he heard you: he
+  goes to thinking, and your words stay in the line until he answers. His
+  caption shows his words as he says them. You can start talking over his
+  greeting or an answer at any time; nothing you say is lost.
 
 ### What's worth saying
 

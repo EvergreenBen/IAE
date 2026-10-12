@@ -11,12 +11,18 @@ export interface ArchieContext {
 
 /** Pure: store state → expression. Order matters: the user comes first. */
 export function archieStateFrom(s: Pick<IaeState, 'voice' | 'lead' | 'agenda' | 'claude'>, ctx: ArchieContext = {}): ArchieState {
-  const { mic, speaking } = s.voice;
-  if (mic === 'hearing' || mic === 'transcribing' || ctx.typing) return 'listening';
+  const { mic, speaking, said } = s.voice;
+  if (mic === 'hearing' || ctx.typing) return 'listening';
+  // Their turn just ended: Archie shows he heard it at once, before a word comes back.
+  if (mic === 'transcribing') return 'thinking';
   if (speaking) return 'speaking';
   if (s.lead.state === 'thinking') return 'thinking';
-  // Words are streaming: the mouth moves with them (or with the voice, once audible).
-  if (s.lead.state === 'replying') return 'speaking';
+  if (s.lead.state === 'replying') {
+    // The voice is still getting its first words ready: no mouth moving to words nobody hears yet.
+    if (said && said.turnId === s.lead.turnId && !said.done && !said.chunk) return 'thinking';
+    // Without a voice the mouth moves with the words as they stream.
+    return 'speaking';
+  }
   if (s.agenda.some((a) => a.status === 'open' && ((a.blocking?.length ?? 0) > 0 || a.priority >= 0.75))) return 'question';
   if (s.claude === 'unavailable') return 'away';
   return 'idle';

@@ -69,6 +69,19 @@ export class Vad {
   private onsetFrames = 0;
   private dips = 0;
   private silentFrames = 0;
+  private quietRun = 0;
+  private loudFor = 0;
+
+  /**
+   * Frames since the room was last quiet (below the end threshold for
+   * QUIET_FRAMES): how far back the speech that just started really began.
+   * Short words before a pause can fall short of the onset (in strict mode
+   * especially), so 'start' may fire a second or so in; the caller keeps those
+   * words by capturing from here.
+   */
+  get speechFrames(): number {
+    return this.loudFor;
+  }
 
   constructor(opts: Partial<VadOptions> = {}) {
     this.opts = { ...DEFAULT_VAD, ...opts };
@@ -139,6 +152,13 @@ export class Vad {
     }
 
     const { start, end } = this.thresholds(echo);
+    if (rms > end) {
+      this.quietRun = 0;
+      this.loudFor++;
+    } else {
+      this.quietRun++;
+      this.loudFor = this.quietRun >= QUIET_FRAMES ? 0 : this.loudFor + 1;
+    }
 
     if (!this.speaking) {
       if (this.gated) {
@@ -228,6 +248,9 @@ export class EchoModel {
     return this.gain * ref;
   }
 }
+
+/** This many quiet frames in a row (160ms) is a gap between utterances, not between words. */
+const QUIET_FRAMES = 8;
 
 /** The echo window: how late the mic may hear him, in 20ms frames. */
 const WINDOW_FRAMES = 15;

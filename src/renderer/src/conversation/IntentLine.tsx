@@ -49,6 +49,7 @@ export function IntentLine() {
   const selectedLabel = useIae((s) => (s.selectedNodeId ? (s.map.nodes[s.selectedNodeId]?.label ?? null) : null));
   const questionUp = useIae((s) => !!activeQuestion(s.agenda, (s as { activeAgendaId?: string | null }).activeAgendaId));
   const interim = useIae((s) => s.voice.interim);
+  const heard = useIae((s) => s.voice.heard);
   const mic = useIae((s) => s.voice.mic);
   const loadProgress = useIae((s) => s.voice.loadProgress);
   const handsFree = useIae((s) => s.settings.voice.handsFree);
@@ -62,7 +63,9 @@ export function IntentLine() {
   const archie = useArchieState({ typing: focused && text.length > 0 && !isSlash });
   const level = useArchieLevel();
   const crewWorking = useCrewWorking();
-  const hint = useHint(text.length === 0 && !interim);
+  // What they just said stays, settled, until the answer begins.
+  const echo = !text && !interim && mic !== 'hearing' ? (heard ?? '') : '';
+  const hint = useHint(text.length === 0 && !interim && !echo);
 
   const listening = mic === 'hearing';
   const placeholder = listening ? 'Listening…' : mic === 'transcribing' ? '' : placeholderFor({ blank, selectedLabel, questionUp });
@@ -187,7 +190,7 @@ export function IntentLine() {
             className={styles.input}
             data-slash={isSlash || undefined}
             value={text}
-            placeholder={interim ? '' : placeholder}
+            placeholder={interim || echo ? '' : placeholder}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}
             onFocus={() => setFocused(true)}
@@ -199,6 +202,11 @@ export function IntentLine() {
           {interim && !text && (
             <div ref={interimBox} className={styles.interim} aria-live="polite">
               <span>{interim}</span>
+            </div>
+          )}
+          {echo && (
+            <div className={styles.interim} data-heard="">
+              <span>{echo}</span>
             </div>
           )}
         </div>

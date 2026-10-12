@@ -28,10 +28,13 @@ export function useVoice(hooks: VoiceHooks): void {
 
     tts.onSpeaking = (on) => {
       if (on) turnTrace.mark('voice');
-      ui.voice({ speaking: on });
+      // The answer is audible: what they said has been answered, so it leaves the intent line.
+      ui.voice(on ? { speaking: on, heard: undefined } : { speaking: on });
     };
     // The mic listens differently for the whole of a reply, gaps between sentences included.
     tts.onActive = (on) => voice.setLeadSpeaking(on);
+    // The caption keeps pace with the voice.
+    tts.onSaid = (said) => ui.voice({ said: said ?? undefined });
 
     const apply = (v: Settings['voice']) => {
       tts.opts = speakOptions(v);
@@ -52,8 +55,13 @@ export function useVoice(hooks: VoiceHooks): void {
           if (voice.userTalking) tts.muteIfNew(e.turnId);
           tts.delta(e.turnId, e.text);
         } else if (/\S/.test(e.text)) speechPulse(0.6); // no voice: the mouth follows the words
+        // A reply the voice isn't speaking shows in the caption straight away: that is the answer beginning.
+        if (/\S/.test(e.text) && useIae.getState().voice.said?.turnId !== e.turnId) ui.voice({ heard: undefined });
       } else if (e.type === 'lead/done') {
-        if (!e.text) turnTrace.drop();
+        if (!e.text) {
+          turnTrace.drop();
+          ui.voice({ heard: undefined });
+        }
         // Always passed on (even empty), so a skipped turn that said nothing still clears.
         if (tts.opts.enabled && tts.supported) tts.done(e.turnId, e.text);
       } else if (e.type === 'project/opened' || e.type === 'project/closed') {
@@ -72,9 +80,10 @@ export function useVoice(hooks: VoiceHooks): void {
       tts.cancel();
       tts.onSpeaking = () => {};
       tts.onActive = () => {};
+      tts.onSaid = () => {};
       voice.dispose();
       voice.hooks = { onStart() {}, onInterim() {}, onFinal() {}, onDiscard() {} };
-      ui.voice({ mic: 'off', speaking: false, level: 0, interim: '', loadProgress: undefined, error: undefined });
+      ui.voice({ mic: 'off', speaking: false, level: 0, interim: '', heard: undefined, said: undefined, loadProgress: undefined, error: undefined });
     };
   }, []);
 }

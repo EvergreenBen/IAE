@@ -49,6 +49,10 @@ export interface VoiceHooks {
 const LEAD_TAIL_MS = 350;
 const FRAME_MS = 20;
 const PREROLL_FRAMES = 25; // 500ms: the first syllable before the VAD is sure
+/** Kept before an utterance at most: when the VAD is sure only a second in, the words before still count. */
+const RING_FRAMES = 75;
+/** Room kept before the speech itself began. */
+const LEAD_FRAMES = 5;
 const MIN_PTT_MS = 280;
 const MAX_UTTERANCE_MS = 28_000; // Whisper's window is 30s
 const INTERIM_EVERY_MS = 1000;
@@ -307,7 +311,7 @@ class VoiceController {
     const r = rms(frame);
     this.updateLevel(r);
     this.ring.push(frame);
-    if (this.ring.length > PREROLL_FRAMES) this.ring.shift();
+    if (this.ring.length > RING_FRAMES) this.ring.shift();
 
     if (this.utter) {
       this.utter.frames.push(frame);
@@ -371,9 +375,13 @@ class VoiceController {
   private begin(via: Utterance['via']): void {
     // Over Archie's voice, only dip him until it's clear this is a person; otherwise stop everything now.
     const overLead = via === 'vad' && this.leadActive;
-    this.utter = { id: ++this.seq, frames: [...this.ring], via, overLead, confirmed: !overLead, early: null };
+    // From where the speech really began ("What does…" can be a second old by the time the VAD is sure).
+    const back = via === 'vad' ? Math.max(PREROLL_FRAMES, this.vad.speechFrames + LEAD_FRAMES) : PREROLL_FRAMES;
+    this.utter = { id: ++this.seq, frames: this.ring.slice(-back), via, overLead, confirmed: !overLead, early: null };
     if (overLead) tts.duck(true);
     else this.bargeIn();
+    // They're talking again: their last words make way for these.
+    ui.voice({ heard: undefined });
     this.hooks.onStart();
     clearInterval(this.interimTimer);
     this.interimTimer = setInterval(() => this.interim(), INTERIM_EVERY_MS);

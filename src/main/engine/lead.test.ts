@@ -170,7 +170,8 @@ describe('Lead: what gets heard', () => {
     });
     const r = await turn('Walk me through how a photo becomes a thumbnail.');
     expect(r.text).toBe(`${opening} Nothing ever queues a thumbnail job, so the worker never runs.`);
-    expect(r.spoken).toBe(`${opening} Nothing ever queues a thumbnail job, so the worker never runs.`);
+    // Each time tools start, a break follows what was said, so the voice says it now instead of waiting.
+    expect(r.spoken).toBe(`${opening} Nothing ever queues a thumbnail job, so the worker never runs. `);
     lead.close();
   });
 
@@ -189,6 +190,23 @@ describe('Lead: what gets heard', () => {
     });
     const r = await turn('Walk me through how a photo becomes a thumbnail.');
     expect(r.text).toBe('Let me check where the thumbnail job gets queued. The photo goes up fine, but nothing ever adds a thumbnail job.');
+    lead.close();
+  });
+
+  it('marks the opener finished when the tools start, so the voice needn\'t wait to be sure', async () => {
+    const { lead, turn, events } = setup([]);
+    const said = () => events.map((e) => (e.type === 'lead/delta' ? e.text : '')).join('');
+    replies.push({
+      blocks: [
+        { text: ['Let me look at', ' the jobs worker.'] },
+        { tool: 'Grep' },
+        { check: () => expect(said()).toBe('Let me look at the jobs worker. ') },
+        { text: ['It polls every two seconds.'] },
+      ],
+    });
+    const r = await turn('What does the jobs worker do?');
+    expect(r.text).toBe('Let me look at the jobs worker. It polls every two seconds.');
+    expect(r.spoken).toBe('Let me look at the jobs worker. It polls every two seconds.');
     lead.close();
   });
 

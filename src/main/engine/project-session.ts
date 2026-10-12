@@ -120,7 +120,7 @@ export class ProjectSession {
     }
     if (this.cartographer) this.lead.send('events', 'project opened for the first time. Atlas (the cartographer) is reading the code now; the map is a rough first draft from folder names and will sharpen.');
     else if (empty) this.lead.send('events', `project opened: new, empty.${back} Invite the idea in one warm sentence.`);
-    else this.lead.send('events', `project reopened.${back} In one or two sentences, pick up where you left off: what is built or in flight, and the one decision that matters next.`);
+    else this.lead.send('events', `project reopened.${back} In one sentence, pick up where you left off: what is in flight, or the one decision that matters next (asked as a second sentence if it needs their call).`);
   }
 
   private startCartographer(): void {
@@ -129,7 +129,11 @@ export class ProjectSession {
       emit: this.d.emit,
       settings: this.d.settings,
       onDone: (ok, summary) => {
-        if (ok) this.ws.pushEvent(`Atlas finished mapping the codebase: ${summary || 'the map now reflects the code.'}`, true);
+        if (ok)
+          this.ws.pushEvent(
+            `Atlas finished mapping the codebase: ${summary || 'the map now reflects the code.'} (They can see the map sharpen. If it shows one thing worth their attention for what they're doing, say that in one sentence; otherwise <silence/>.)`,
+            true,
+          );
         else this.ws.pushEvent(`Atlas couldn't finish mapping (${summary || 'unknown error'}); the map is still the rough draft.`, false);
         this.pulse.poke();
       },

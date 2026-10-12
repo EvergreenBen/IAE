@@ -241,13 +241,16 @@ about the scope itself sits outside the frame, never over its children.
   - A question card is up: "Answer, or say something else…"
 - Typing `/` opens Claude Code commands and skills above the line.
 - **Caption**: the lead's words, centred above the intent line, Newsreader
-  17px, at most three lines (`max-width: 680px`). Words fade in as they stream.
+  17px, at most three lines (`max-width: 680px`). Words fade in as they are
+  said (as they stream, when the voice is off).
   A longer reply shows its latest *whole* sentences, never a line cut in half.
   The caption lingers after speech ends (6–12s, about four words a second),
   then fades. Clicking it, or
   pressing ⌘J, opens the **transcript**, a calm column on a sheet with no chat
   bubbles. The lead is in serif and the user in sans.
 - The user's interim speech shows live inside the intent line in `--ink-2`.
+  When their turn ends it stays there, settled in `--ink-3`, until Archie's
+  answer begins: the sign he heard them, with no extra chrome.
 
 ## 6. Archie, the lead
 
@@ -262,7 +265,7 @@ States are subtle and readable at a glance:
 |---|---|
 | idle | Still. Blinks every 3–6s. Eyes drift slightly toward the cursor. |
 | listening | Leans in (~-4°). Eyes widen and look at the input. Body squashes gently with the mic level. |
-| thinking | Eyes glance up and to the side. One claw taps slowly. No spinner. |
+| thinking | Eyes glance up and to the side. One claw taps slowly. No spinner. From the moment the person's turn ends until his voice starts. |
 | speaking | A small mouth opens and closes with the speech. |
 | has a question | Raises one claw, like a raised hand. The only "needs you" signal besides the card. |
 | crew working | Occasionally glances toward the map. |

@@ -2,7 +2,8 @@
 // moment Archie's voice starts. One console line per turn ("[voice:turn] …"):
 // the numbers to watch when tuning how quickly Archie answers.
 
-type Mark = 'text' | 'sent' | 'words' | 'voice';
+/** text: transcript ready · sent: to the engine · words: the reply's first words · chunk: first words handed to the voice · clip: its audio ready · voice: sound. */
+type Mark = 'text' | 'sent' | 'words' | 'chunk' | 'clip' | 'voice';
 
 let stoppedAt = 0;
 let marks: Partial<Record<Mark, number>> = {};
@@ -28,6 +29,6 @@ export const turnTrace = {
     if (reported) return;
     reported = true;
     const at = (m: Mark) => (marks[m] !== undefined ? `${Math.round(marks[m]! - stoppedAt)}` : '–');
-    console.info(`[voice:turn] stop→text ${at('text')} · sent ${at('sent')} · first words ${at('words')} · voice ${at('voice')} ms`);
+    console.info(`[voice:turn] stop→text ${at('text')} · sent ${at('sent')} · first words ${at('words')} · chunk ${at('chunk')} · clip ${at('clip')} · voice ${at('voice')} ms`);
   },
 };
