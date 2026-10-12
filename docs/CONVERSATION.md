@@ -132,12 +132,21 @@ work (each earns one nudge, so their time goes to the next decision), or
 events. A question already on a card is never raised again. Archie may:
 
 - surface the top agenda item
-- report a finished build in one sentence and start the agreed next step
+- report a finished build in one plain sentence about what the system now
+  does ("Ada's done: the recipe server now tells you whether the database is
+  reachable."), with no commands, ports, file names or test counts, and start
+  the agreed next step
 - offer one sharp idea grounded in the map, or name the next build in a
   sentence ("Next I'd make failed jobs retry."). A nudge never starts new work
   on its own; the person's go does.
 - **stay silent** (reply `<silence/>`) when nothing clears the quality bar.
   Silence is a valid choice. Chatter is worse than quiet.
+
+Anything Archie says unprompted (an event, a nudge, the greeting) is one short
+sentence carrying the point, plus a question if it needs their call. The
+engine holds it to that: a second sentence is spoken only when it's a question
+(or the default riding on one), and nothing after the first one it leaves
+out. The map and the cards carry the detail.
 
 Nudges back off (45s → 90s → 3min) when ignored and reset when the user speaks.
 Archie never starts talking while the user is speaking or typing.
@@ -152,7 +161,13 @@ Archie never starts talking while the user is speaking or typing.
 - If the user answers a question card by voice, the utterance is tied to that
   agenda item.
 - Archie's replies are spoken sentence by sentence as they stream, so speech
-  starts before the reply finishes.
+  starts before the reply finishes. The opening is cut at its first natural
+  phrase (a comma, or before "and", "in", "with"…), so the voice starts on a
+  few words rather than a whole sentence.
+- The moment the person's turn ends, Archie shows he heard it: he goes to
+  thinking, and their words stay, settled, in the intent line until his answer
+  begins. The caption then shows his words as he says them, not seconds ahead
+  of the voice, and his mouth moves only to words being heard.
 
 ## Delegation (act, don't ask)
 
