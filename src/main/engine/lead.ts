@@ -49,6 +49,8 @@ interface Turn extends PendingTurn {
   /** Trims a repeat of an open card's question from later sentences (null: nothing to guard). */
   guard: RepeatGuard | null;
   replying: boolean;
+  /** What was last sent to the caption and voice ended in a space (a sentence break). */
+  saidBreak: boolean;
   streamed: Set<string>;
   textBlocks: number;
   /** A tool call happened; later text is muted if the opening already said enough. */
@@ -348,6 +350,7 @@ export class Lead {
       filter: new SpeechFilter(),
       guard: this.asked.guard(pending.kind, pending.body, ws.agenda.open()),
       replying: false,
+      saidBreak: false,
       streamed: new Set(),
       textBlocks: 0,
       afterTools: false,
@@ -463,6 +466,8 @@ export class Lead {
       if (!turn.muted) {
         const tail = turn.filter.flushTail();
         this.say(turn, turn.guard ? turn.guard.push(tail) + turn.guard.flush() : tail);
+        // A break after it, so the voice knows that sentence is over and says it now ("Let me look at the jobs worker.").
+        if (turn.replying && !turn.saidBreak) this.say(turn, ' ');
       }
       turn.afterTools = true;
       if (name && LOOK_TOOLS.has(name)) {
@@ -480,7 +485,11 @@ export class Lead {
       turn.muted = true;
       return;
     }
-    if (turn.textBlocks++ > 0 && !/\s$/.test(turn.raw)) this.feed(turn, ' ');
+    if (turn.textBlocks++ > 0 && !/\s$/.test(turn.raw)) {
+      // The break was already sent when the tools started: only the reply's text needs it.
+      if (turn.saidBreak) turn.raw += ' ';
+      else this.feed(turn, ' ');
+    }
   }
 
   private feed(turn: Turn, chunk: string): void {
@@ -497,6 +506,7 @@ export class Lead {
 
   private say(turn: Turn, out: string): void {
     if (!out) return;
+    turn.saidBreak = /\s$/.test(out);
     if (!turn.replying) {
       turn.replying = true;
       this.d.emit({ type: 'lead/state', state: 'replying' });
