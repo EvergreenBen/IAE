@@ -1,6 +1,6 @@
-// Archie's voice is Kokoro, with the system voice standing in. A reply waits a
-// moment for Kokoro to load, a run of speech never changes voice part-way,
-// and barge-in silences both.
+// Archie has one voice: Kokoro. A reply waits for Kokoro to load and never
+// switches to the system voice, which speaks only when picked or when Kokoro
+// can't run. Barge-in silences both.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Sink } from './systemVoice';
 
@@ -128,21 +128,32 @@ describe('while Kokoro loads', () => {
     expect(player.played).toEqual(['First thing.', 'Second thing.']);
   });
 
-  it('lets the system voice take a reply when Kokoro is slow, and never switches mid-run', async () => {
+  it('never switches voice: a reply Kokoro is too slow for stays silent, and the next one is Kokoro', async () => {
     const tts = await speaker();
     tts.delta('t1', 'One. Two. ');
-    await flush(); // readyWithin → false: this run is the system voice's
-    expect(system.map((u) => u.text)).toEqual(['One.', 'Two.']);
-
-    k.isReady = true; // Kokoro arrives while the system voice is still speaking
+    await flush(); // readyWithin → false, Kokoro still loading
     tts.delta('t1', 'Three. ');
-    expect(system.map((u) => u.text)).toEqual(['One.', 'Two.', 'Three.']);
+    tts.done('t1', 'One. Two. Three.');
+    expect(system).toEqual([]);
     expect(k.synth).not.toHaveBeenCalled();
+    expect(tts.isActive).toBe(false);
 
-    for (const u of system) u.onend?.();
+    k.isReady = true;
     tts.delta('t2', 'A new reply. ');
     await flush();
     expect(player.played).toEqual(['A new reply.']);
+    expect(system).toEqual([]);
+  });
+
+  it('hands over to the system voice only when Kokoro cannot load at all', async () => {
+    let ready!: (ok: boolean) => void;
+    k.readyWithin.mockImplementation(() => new Promise((r) => (ready = r)));
+    const tts = await speaker();
+    tts.delta('t1', 'Hello there. ');
+    k.failed = true;
+    ready(false);
+    await flush();
+    expect(system.map((u) => u.text)).toEqual(['Hello there.']);
   });
 });
 

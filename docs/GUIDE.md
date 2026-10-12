@@ -36,9 +36,12 @@ npm run voice:setup    # ~700MB: speech-to-text and Archie's voice, on-device an
 ```
 
 Archie's voice is Kokoro, a speech model that runs on your Mac (on the GPU when
-it can). Without `voice:setup` it downloads the first time Archie speaks, and the
-system voice fills in until it's ready. It also fills in for a reply that starts
-in the few seconds before Kokoro has loaded.
+it can). It starts loading the moment the app opens, and Archie only ever
+speaks in that one voice: a reply that arrives before Kokoro is ready waits for
+it, and if the wait runs long that reply stays on screen without being spoken.
+Without `voice:setup`, Kokoro downloads the first time, so Archie is silent
+until it's ready. The macOS system voice speaks only if you pick it in
+Settings, or if Kokoro can't run on this Mac at all.
 
 Other commands you may want:
 

@@ -261,7 +261,9 @@ them on first use.
 - **TTS**: Kokoro-82M via `kokoro-js` (on transformers.js) in a second Web
   Worker, WebGPU fp32 only (about 12ms per character; fp16 produces NaNs, and
   wasm runs 1.5× slower than real time, so without WebGPU the system voice
-  speaks). It loads when a project opens. Speech is chunked by sentence as
+  speaks). It loads when the app starts. A reply never switches voice: one
+  that arrives before Kokoro is ready waits up to 12s for it, then stays
+  silent (the caption still shows it). Speech is chunked by sentence as
   `lead/delta` streams; the first chunk is cut at about 48 characters, at a
   comma or before a joining word, so sound starts sooner. The worker turns
   chunks into 24kHz clips in order, and the renderer schedules them back to

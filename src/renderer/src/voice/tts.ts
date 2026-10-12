@@ -2,16 +2,17 @@
 // speech starts after the first sentence, not after the whole reply. Barge-in
 // cancels everything at once.
 //
-// Kokoro, running on this machine (kokoro.ts), is the voice. The system voice
-// (systemVoice.ts) stands in when Kokoro can't run, when the person picked it,
-// and for a reply that starts while Kokoro is still loading — after waiting a
-// moment, so a launch from local model files still opens in Kokoro. A run of
-// speech never changes voice part-way through.
+// Archie has one voice. Kokoro, running on this machine (kokoro.ts), is it;
+// the system voice (systemVoice.ts) speaks only when the person picked it or
+// Kokoro can't run at all. A reply that starts while Kokoro is still loading
+// waits for it. If the wait runs long, that reply stays on screen and silent
+// rather than switching to another voice.
 //
 // Two notions of "talking": audible (sound is coming out right now: the mouth,
 // the avatar) and active (a reply is under way, including the gaps between its
 // sentences: the mic listens differently for all of it).
 
+import type { Settings } from '@shared/model';
 import { ClipPlayer } from './clipPlayer';
 import { kokoro } from './kokoro';
 import { DEFAULT_KOKORO_VOICE, voiceChoice, type VoiceChoice } from './kokoroConfig';
@@ -25,12 +26,15 @@ export interface SpeakOptions {
   voice: string;
 }
 
-/** How long a reply waits for Kokoro to finish loading before the system voice takes it. */
-const KOKORO_WAIT_MS = 3000;
+/** How long a reply waits for Kokoro to finish loading. Longer than that and it is stale: it stays silent. */
+const KOKORO_WAIT_MS = 12_000;
 /** After the system voice stops, the room still carries it this long (no echo reference for it). */
 const SYSTEM_TAIL_MS = 350;
 /** A finished sentence with nothing after it for this long is spoken without waiting for more. */
 const SETTLE_MS = 250;
+
+/** settings.voice → how replies are spoken. */
+export const speakOptions = (v: Settings['voice']): SpeakOptions => ({ enabled: v.speak, rate: v.rate, voice: v.ttsVoice });
 
 type Engine = 'kokoro' | 'system';
 
@@ -116,13 +120,11 @@ export class Speaker {
     if (this.outstanding === 0 && !this.held.length && this.openTurn === null) this.setActive(false);
   }
 
-  /** Load Kokoro in the background before the first reply needs it. */
+  /** Load Kokoro now (it runs in a worker), so it is ready before the first reply needs it. */
   prewarm(): void {
     const choice = voiceChoice(this.opts.voice);
     if (!this.opts.enabled || choice.engine !== 'kokoro' || !kokoro.supported) return;
-    const run = () => void kokoro.load(choice.voice);
-    if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 1500 });
-    else run();
+    void kokoro.load(choice.voice);
   }
 
   /**
@@ -243,10 +245,20 @@ export class Speaker {
     void kokoro.load(kokoroVoice(line.choice));
     void kokoro.readyWithin(KOKORO_WAIT_MS).then((ok) => {
       if (gen !== this.gen) return;
-      this.engine = ok ? 'kokoro' : 'system';
       const held = this.held;
       this.held = [];
-      for (const l of held) this.send(l);
+      if (ok || kokoro.failed || !kokoro.supported) {
+        // Ready, or never going to be: then the system voice is the voice from here on.
+        this.engine = ok ? 'kokoro' : 'system';
+        for (const l of held) this.send(l);
+        return;
+      }
+      // Still loading: never a second voice. The rest of this reply stays on screen only.
+      console.warn('[voice] Kokoro is still loading; this reply stays silent');
+      this.engine = null;
+      if (this.turnId) this.muted.add(this.turnId);
+      if (this.openTurn === this.turnId) this.openTurn = null;
+      this.settle();
     });
   }
 

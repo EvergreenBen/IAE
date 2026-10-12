@@ -1,6 +1,6 @@
 // Wires the voice machinery into the app while a project is open:
-//   - the lead's streaming reply → speech, sentence by sentence (Kokoro loads
-//     in the background as soon as a project is open)
+//   - the lead's streaming reply → speech, sentence by sentence (Kokoro
+//     starts loading when the app starts: App.tsx)
 //   - speech audible ↔ store.voice.speaking (and a stricter VAD meanwhile)
 //   - settings.voice → hands-free, speak, rate, voice
 //   - the controller's hooks → the caller's conversation logic
@@ -12,7 +12,7 @@ import type { Settings } from '@shared/model';
 import { voice, type VoiceHooks } from './controller';
 import { speechPulse } from './pulse';
 import { turnTrace } from './trace';
-import { tts } from './tts';
+import { speakOptions, tts } from './tts';
 
 export function useVoice(hooks: VoiceHooks): void {
   const latest = useRef(hooks);
@@ -34,7 +34,7 @@ export function useVoice(hooks: VoiceHooks): void {
     tts.onActive = (on) => voice.setLeadSpeaking(on);
 
     const apply = (v: Settings['voice']) => {
-      tts.opts = { enabled: v.speak, rate: v.rate, voice: v.ttsVoice };
+      tts.opts = speakOptions(v);
       if (!v.speak) tts.cancel();
       else tts.prewarm();
       void voice.setHandsFree(v.handsFree);
