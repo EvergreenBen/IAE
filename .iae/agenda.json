@@ -1,0 +1,334 @@
+[
+  {
+    "id": "q-K9r_1g",
+    "kind": "clarify",
+    "prompt": "Where are we working first: the Renderer, the Main engine, or the voice pipeline?",
+    "why": "It tells me which part of the map to sharpen first.",
+    "options": [
+      "Renderer",
+      "Main engine",
+      "Voice",
+      "Something new"
+    ],
+    "nodeId": "renderer",
+    "blocking": [],
+    "priority": 0.5,
+    "status": "answered",
+    "createdAt": 1791488590349,
+    "answer": "Voice: make Archie's spoken voice more human"
+  },
+  {
+    "id": "q-w7doJo",
+    "kind": "decision",
+    "prompt": "Replace speechSynthesis with a local neural voice (Kokoro) or a cloud voice (ElevenLabs/OpenAI)?",
+    "why": "Local is free, offline and private; cloud sounds most human but adds latency, a key and cost.",
+    "options": [
+      "Local Kokoro",
+      "ElevenLabs",
+      "OpenAI TTS"
+    ],
+    "nodeId": "renderer",
+    "blocking": [],
+    "priority": 0.7,
+    "status": "answered",
+    "createdAt": 1791488660298,
+    "answer": "Local Kokoro"
+  },
+  {
+    "id": "q-jhuNot",
+    "kind": "decision",
+    "prompt": "Restart the unfinished builds: auto mode first, then Kokoro voice?",
+    "why": "Both builds stopped when the app closed; auto mode stops the approval prompts that stalled them.",
+    "options": [
+      "Auto mode first",
+      "Both at once",
+      "Not yet"
+    ],
+    "nodeId": "renderer",
+    "blocking": [],
+    "priority": 0.6,
+    "status": "answered",
+    "createdAt": 1791489004475,
+    "answer": "Both at once"
+  },
+  {
+    "id": "q-nIInhl",
+    "kind": "decision",
+    "prompt": "Kokoro never landed in Voice. Restart that builder now, with auto mode on?",
+    "options": [
+      "Restart Kokoro",
+      "Verify auto mode first",
+      "Not yet"
+    ],
+    "nodeId": "renderer",
+    "blocking": [],
+    "priority": 0.6,
+    "status": "answered",
+    "createdAt": 1791491915263,
+    "answer": "Restart Kokoro"
+  },
+  {
+    "id": "q-AFstJ7",
+    "kind": "decision",
+    "prompt": "Auto mode code is uncommitted. Have a builder verify it and push it to GitHub?",
+    "why": "Your co-founder won't get auto mode until it's committed.",
+    "options": [
+      "Verify and push",
+      "Verify only",
+      "Leave it"
+    ],
+    "nodeId": "main",
+    "blocking": [],
+    "priority": 0.5,
+    "status": "answered",
+    "createdAt": 1791491947151,
+    "answer": "Verify only"
+  },
+  {
+    "id": "q-dhirWj",
+    "kind": "decision",
+    "prompt": "Restart the Kokoro voice build now, and keep the app open until it finishes?",
+    "why": "Builders stop when the app closes; this build was cut off three times.",
+    "options": [
+      "Restart now",
+      "Not yet"
+    ],
+    "nodeId": "renderer",
+    "blocking": [],
+    "priority": 0.6,
+    "status": "answered",
+    "createdAt": 1791492195095,
+    "answer": "Restart now"
+  },
+  {
+    "id": "q-jBtU9G",
+    "kind": "decision",
+    "prompt": "Archie's Kokoro voice: warm female (Heart) or male (Michael)?",
+    "options": [
+      "Heart (female)",
+      "Michael (male)",
+      "Let me pick in Settings"
+    ],
+    "nodeId": "renderer",
+    "blocking": [],
+    "priority": 0.3,
+    "status": "answered",
+    "createdAt": 1791492233787,
+    "answer": "Michael (male)"
+  },
+  {
+    "id": "q-CN5I2r",
+    "kind": "decision",
+    "prompt": "Who is the map for first: non-technical founders, developers, or both with a simple/technical toggle?",
+    "why": "Decides node labels, summaries and how much jargon the map shows.",
+    "options": [
+      "Founders, plain English",
+      "Both, with toggle",
+      "Developers"
+    ],
+    "nodeId": "renderer",
+    "blocking": [],
+    "priority": 0.7,
+    "status": "answered",
+    "createdAt": 1791492329102,
+    "answer": "Both, easy to understand first"
+  },
+  {
+    "id": "q-vR2uf8",
+    "kind": "decision",
+    "prompt": "Fix control gaps: start with builders resuming after restart, or live diffs on the map?",
+    "why": "Restarts have killed the Kokoro build three times.",
+    "options": [
+      "Resume first",
+      "Live diffs first",
+      "Both",
+      "Not yet"
+    ],
+    "nodeId": "main",
+    "blocking": [],
+    "priority": 0.6,
+    "status": "answered",
+    "createdAt": 1791492470113,
+    "answer": "Both"
+  },
+  {
+    "id": "q-b7eMMR",
+    "kind": "decision",
+    "prompt": "Finish line: verify and push Kokoro first, then restart resume, diffs and progress?",
+    "why": "Kokoro is closest to done; Builder Resume would stop restarts killing the rest.",
+    "options": [
+      "Kokoro first, then rest",
+      "Restart all four",
+      "Not yet"
+    ],
+    "nodeId": "renderer",
+    "blocking": [],
+    "priority": 0.6,
+    "status": "answered",
+    "createdAt": 1791517413505,
+    "answer": "Restart all four"
+  },
+  {
+    "id": "q-wj2hbo",
+    "kind": "decision",
+    "prompt": "Next: plain-English node labels with technical names on hover, from Kit's research?",
+    "why": "Your call: the map must be easy to understand first.",
+    "options": [
+      "Yes, queue it",
+      "Show me the references first",
+      "Later"
+    ],
+    "nodeId": "renderer",
+    "blocking": [],
+    "priority": 0.5,
+    "status": "answered",
+    "createdAt": 1791517521735,
+    "answer": "Yes, queue it"
+  },
+  {
+    "id": "q-S1tXPW",
+    "kind": "decision",
+    "prompt": "Restart all five stopped builds: Kokoro, resume, diffs, progress, plain labels?",
+    "why": "Builds stop whenever the app closes until Builder Resume lands.",
+    "options": [
+      "Restart all five",
+      "Resume and Kokoro first",
+      "Not yet"
+    ],
+    "nodeId": "main",
+    "blocking": [],
+    "priority": 0.6,
+    "status": "answered",
+    "createdAt": 1791518075297,
+    "answer": "Restart all five"
+  },
+  {
+    "id": "q-PBpmuy",
+    "kind": "decision",
+    "prompt": "When these five finish, commit and push everything to GitHub for your co-founder?",
+    "why": "Uncommitted work is piling up across crew.ts and the map; one clean push protects it.",
+    "options": [
+      "Push once tests pass",
+      "Let me review first",
+      "Keep local"
+    ],
+    "nodeId": "main",
+    "blocking": [],
+    "priority": 0.5,
+    "status": "dismissed",
+    "createdAt": 1791518164841
+  },
+  {
+    "id": "q-KDnIzi",
+    "kind": "risk",
+    "prompt": "Dev mode restarts the app on Main edits, killing builders. Run a stable build while Arxitect edits itself?",
+    "why": "Every build touching src/main has died this way, five times now.",
+    "options": [
+      "Stable build + restart builds",
+      "Builders edit a separate worktree",
+      "Keep dev mode"
+    ],
+    "nodeId": "main",
+    "blocking": [],
+    "priority": 0.9,
+    "status": "dismissed",
+    "createdAt": 1791562858053
+  },
+  {
+    "id": "q-3BZZur",
+    "kind": "decision",
+    "prompt": "Check which of the five builds landed before restarting anything?",
+    "why": "New files appeared; restarting blind could redo or clobber finished work.",
+    "options": [
+      "Check first",
+      "Restart all five",
+      "Not now"
+    ],
+    "nodeId": "main",
+    "blocking": [],
+    "priority": 0.5,
+    "status": "answered",
+    "createdAt": 1791575379030,
+    "answer": "All five landed, built by the person in VS Code"
+  },
+  {
+    "id": "q-TKCIoR",
+    "kind": "decision",
+    "prompt": "Finish plain-English labels: relabel this map and show technical names on hover in NodeCard?",
+    "options": [
+      "Do both",
+      "Just relabel the map",
+      "Not now"
+    ],
+    "nodeId": "renderer",
+    "blocking": [],
+    "priority": 0.5,
+    "status": "dismissed",
+    "createdAt": 1791575431750
+  },
+  {
+    "id": "q-2k5PsD",
+    "kind": "decision",
+    "prompt": "Commit and push the new features to GitHub so your co-founder gets them?",
+    "options": [
+      "Push once tests pass",
+      "Already pushed",
+      "Keep local"
+    ],
+    "nodeId": "main",
+    "blocking": [],
+    "priority": 0.4,
+    "status": "answered",
+    "createdAt": 1791587385720,
+    "answer": "Push once tests pass"
+  },
+  {
+    "id": "q-7NyLl8",
+    "kind": "idea",
+    "prompt": "Ignore side conversations: should Ears & Voice only pass speech meant for Archie?",
+    "why": "Background chatter is being sent to Archie as instructions.",
+    "options": [
+      "Auto-detect addressee",
+      "Wake word \"Archie\"",
+      "Push-to-talk only",
+      "Leave as is"
+    ],
+    "nodeId": "renderer",
+    "blocking": [],
+    "priority": 0.5,
+    "status": "dismissed",
+    "createdAt": 1791592634212
+  },
+  {
+    "id": "q-L-NPtY",
+    "kind": "decision",
+    "prompt": "Push Ada's hover-label changes to GitHub main now?",
+    "options": [
+      "Push them",
+      "Not yet"
+    ],
+    "nodeId": "renderer",
+    "blocking": [],
+    "priority": 0.3,
+    "status": "answered",
+    "createdAt": 1791815738501,
+    "answer": "Push them"
+  },
+  {
+    "id": "q-x9qO0K",
+    "kind": "decision",
+    "prompt": "Track the .iae map folder in git so your co-founder shares the map?",
+    "why": "Decides whether the map, decisions and agenda are shared or per-machine.",
+    "options": [
+      "Track it, skip transcripts",
+      "Track everything",
+      "Gitignore it"
+    ],
+    "nodeId": "project-data",
+    "blocking": [],
+    "priority": 0.5,
+    "status": "answered",
+    "createdAt": 1791815807826,
+    "answer": "Track it, skip transcripts"
+  }
+]

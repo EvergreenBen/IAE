@@ -1,0 +1,111 @@
+[
+  {
+    "id": "d-lW4wZh",
+    "title": "Archie speaks with local Kokoro TTS",
+    "rationale": "Free, offline, far more human than speechSynthesis.",
+    "nodeId": "renderer-voice",
+    "at": 1791488738555
+  },
+  {
+    "id": "d-n1I2_t",
+    "title": "Kokoro model fetched by script, not committed",
+    "rationale": "Archie's call: Keeps the repo small; co-founder gets it on npm install, like Whisper.",
+    "nodeId": "renderer-voice",
+    "at": 1791488739937
+  },
+  {
+    "id": "d-1rFdz2",
+    "title": "Auto mode toggle auto-approves builder permissions",
+    "rationale": "Person wants no yes-prompts when they switch it on.",
+    "nodeId": "engine-crew",
+    "at": 1791488820652
+  },
+  {
+    "id": "d-ks7ztN",
+    "title": "Restart auto mode and Kokoro builds together",
+    "nodeId": "renderer-voice",
+    "at": 1791489018128
+  },
+  {
+    "id": "d-hl61fC",
+    "title": "Restart Kokoro voice build",
+    "nodeId": "voice-kokoro",
+    "at": 1791491922133
+  },
+  {
+    "id": "d-TGqmwH",
+    "title": "Verify auto mode locally, don't push yet",
+    "nodeId": "engine-crew",
+    "at": 1791491965584
+  },
+  {
+    "id": "d-ka2ele",
+    "title": "Restart Kokoro build; app stays open until done",
+    "nodeId": "voice-kokoro",
+    "at": 1791492208134
+  },
+  {
+    "id": "d-EfAcF2",
+    "title": "Archie's default voice is Kokoro Michael",
+    "nodeId": "voice-kokoro",
+    "at": 1791492246171
+  },
+  {
+    "id": "d-JRWVeN",
+    "title": "Map is plain-English first, technical detail on demand",
+    "rationale": "For founders and developers alike; it replaces the IDE, so it has to be easy to understand first.",
+    "nodeId": "renderer-map",
+    "at": 1791492380402
+  },
+  {
+    "id": "d-ZtMoFF",
+    "title": "Build builder resume and live diffs together",
+    "rationale": "Close the control gap versus Claude Code: survive restarts and see edits.",
+    "nodeId": "main",
+    "at": 1791492512992
+  },
+  {
+    "id": "d-md8Vb-",
+    "title": "Builder progress bar is driven by their todo checklist",
+    "rationale": "Archie's call: Real progress signal; percent guesses would lie.",
+    "nodeId": "renderer-map",
+    "at": 1791492566230
+  },
+  {
+    "id": "d-krD5-5",
+    "title": "Restart Kokoro, resume, diffs and progress builds",
+    "nodeId": "main",
+    "at": 1791517457714
+  },
+  {
+    "id": "d-vM18sC",
+    "title": "Nodes show plain-English labels, technical names on hover",
+    "nodeId": "renderer-map",
+    "at": 1791517541170
+  },
+  {
+    "id": "d-D68flM",
+    "title": "Restart all five stopped builds",
+    "nodeId": "main",
+    "at": 1791518124526
+  },
+  {
+    "id": "d-pd2Zbc",
+    "title": "Commit and push new features to GitHub",
+    "nodeId": "main",
+    "at": 1791587425032
+  },
+  {
+    "id": "d-TG6uMV",
+    "title": "Push hover-label changes to main",
+    "nodeId": "renderer-map",
+    "at": 1791815761749
+  },
+  {
+    "id": "d-2bPaK-",
+    "title": "Track .iae in git, except transcripts and crew sessions",
+    "rationale": "Co-founder shares the map; private and machine-local files stay out.",
+    "nodeId": "project-data",
+    "at": 1791815826159
+  }
+]

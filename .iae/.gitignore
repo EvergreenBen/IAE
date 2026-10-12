@@ -1,0 +1,12 @@
+transcript.jsonl
+state.json
+*.tmp
+crew.json
+# Conversation transcripts, in any form, stay private
+transcript*
+transcripts/
+# Machine-local caches and sessions
+cache/
+.cache/
+sessions/
+*.local.json

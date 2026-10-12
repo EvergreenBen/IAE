@@ -1,0 +1,819 @@
+{
+  "version": 1,
+  "nodes": {
+    "renderer": {
+      "id": "renderer",
+      "parentId": null,
+      "label": "App Window",
+      "kind": "client",
+      "status": "built",
+      "createdAt": 1791488583607,
+      "updatedAt": 1791587341089,
+      "paths": [
+        "src/renderer/"
+      ],
+      "order": 0,
+      "summary": "React 19 window where the user talks to Archie and watches the living architecture map.",
+      "tech": [
+        "React 19",
+        "Vite",
+        "zustand",
+        "ELK",
+        "CodeMirror"
+      ],
+      "techLabel": "Renderer UI"
+    },
+    "renderer-map": {
+      "id": "renderer-map",
+      "parentId": "renderer",
+      "label": "System Map",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488583607,
+      "updatedAt": 1791815803539,
+      "paths": [
+        "src/renderer/src/map/"
+      ],
+      "summary": "Camera, ELK layout, nodes, edges, files, crew, ghosts, questions and permissions.",
+      "techLabel": "Map"
+    },
+    "renderer-conversation": {
+      "id": "renderer-conversation",
+      "parentId": "renderer",
+      "label": "Conversation",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488583607,
+      "updatedAt": 1791488635186,
+      "paths": [
+        "src/renderer/src/conversation/"
+      ],
+      "summary": "Intent line, captions, transcript, slash menu and lexicon autocomplete."
+    },
+    "renderer-lens": {
+      "id": "renderer-lens",
+      "parentId": "renderer",
+      "label": "Lens",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488583607,
+      "updatedAt": 1791488635186,
+      "paths": [
+        "src/renderer/src/lens/"
+      ],
+      "summary": "CodeMirror file view, .env editor and file meaning panel."
+    },
+    "renderer-voice": {
+      "id": "renderer-voice",
+      "parentId": "renderer",
+      "label": "Ears & Voice",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488583607,
+      "updatedAt": 1791587341089,
+      "paths": [
+        "src/renderer/src/voice/"
+      ],
+      "summary": "Mic capture, VAD, Whisper speech-to-text and Kokoro voice, with system-voice fallback.",
+      "techLabel": "Voice"
+    },
+    "renderer-palette": {
+      "id": "renderer-palette",
+      "parentId": "renderer",
+      "label": "Palette",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488583607,
+      "updatedAt": 1791488635186,
+      "paths": [
+        "src/renderer/src/palette/"
+      ],
+      "summary": "Command palette, settings and notices."
+    },
+    "renderer-ui": {
+      "id": "renderer-ui",
+      "parentId": "renderer",
+      "label": "UI Kit",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488583607,
+      "updatedAt": 1791488635186,
+      "paths": [
+        "src/renderer/src/ui/"
+      ],
+      "summary": "Shared small components and icons."
+    },
+    "renderer-avatar": {
+      "id": "renderer-avatar",
+      "parentId": "renderer",
+      "label": "Avatar",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488583607,
+      "updatedAt": 1791488635186,
+      "paths": [
+        "src/renderer/src/avatar/"
+      ],
+      "summary": "Archie the architect avatar and crew tokens."
+    },
+    "renderer-home": {
+      "id": "renderer-home",
+      "parentId": "renderer",
+      "label": "Home",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488583607,
+      "updatedAt": 1791488635186,
+      "paths": [
+        "src/renderer/src/home/"
+      ],
+      "summary": "Start screen with recent projects."
+    },
+    "main": {
+      "id": "main",
+      "parentId": null,
+      "label": "The Brain",
+      "kind": "service",
+      "status": "built",
+      "createdAt": 1791488583607,
+      "updatedAt": 1791592842455,
+      "paths": [
+        "src/main/"
+      ],
+      "order": 1,
+      "summary": "Node-side Engine that runs Claude sessions, indexes the project and persists state.",
+      "tech": [
+        "Electron",
+        "Node 24",
+        "Claude Agent SDK"
+      ],
+      "techLabel": "Electron Main"
+    },
+    "bridge": {
+      "id": "bridge",
+      "parentId": null,
+      "label": "Window ↔ Brain Link",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488602057,
+      "updatedAt": 1791587341089,
+      "summary": "Typed contract (IaeApi + EngineEvent) and preload that connect renderer and main.",
+      "tech": [
+        "Electron IPC",
+        "TypeScript"
+      ],
+      "paths": [
+        "src/shared/",
+        "src/preload/"
+      ],
+      "techLabel": "IPC Bridge"
+    },
+    "project-data": {
+      "id": "project-data",
+      "parentId": null,
+      "label": "Saved Project",
+      "kind": "data",
+      "status": "building",
+      "createdAt": 1791488602057,
+      "updatedAt": 1791815830640,
+      "summary": "Per-project .iae/ folder (map, agenda, decisions, transcript, notes) plus app-level recent/settings JSON.",
+      "techLabel": "Project State"
+    },
+    "claude": {
+      "id": "claude",
+      "parentId": null,
+      "label": "Claude AI",
+      "kind": "ai",
+      "status": "built",
+      "createdAt": 1791488602057,
+      "updatedAt": 1791587341089,
+      "summary": "Claude Agent SDK sessions (lead, crew, cartographer, sketcher) powering all reasoning and building.",
+      "tech": [
+        "Claude Agent SDK",
+        "MCP"
+      ],
+      "techLabel": "Claude Code"
+    },
+    "huggingface": {
+      "id": "huggingface",
+      "parentId": null,
+      "label": "Voice Models",
+      "kind": "external",
+      "status": "built",
+      "createdAt": 1791488602057,
+      "updatedAt": 1791587341089,
+      "summary": "Source of Whisper speech-to-text models downloaded on first use.",
+      "techLabel": "Hugging Face"
+    },
+    "infra": {
+      "id": "infra",
+      "parentId": null,
+      "label": "Build & Docs",
+      "kind": "infra",
+      "status": "built",
+      "createdAt": 1791488602057,
+      "updatedAt": 1791587341089,
+      "summary": "Build/packaging config, dev scripts, docs and the sample repo fixture.",
+      "tech": [
+        "electron-vite",
+        "electron-builder",
+        "vitest"
+      ],
+      "paths": [
+        "*",
+        "scripts/",
+        "docs/",
+        "examples/"
+      ],
+      "techLabel": "Infra"
+    },
+    "main-shell": {
+      "id": "main-shell",
+      "parentId": "main",
+      "label": "App Shell",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791488619377,
+      "summary": "Electron bootstrap, window, menu and generic IPC dispatch to the Engine.",
+      "paths": [
+        "src/main/index.ts",
+        "src/main/ipc.ts",
+        "src/main/menu.ts"
+      ]
+    },
+    "main-config": {
+      "id": "main-config",
+      "parentId": "main",
+      "label": "Config",
+      "kind": "config",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791488619377,
+      "summary": "Environment variables and settings read by the main process.",
+      "paths": [
+        "src/main/env.ts"
+      ]
+    },
+    "engine": {
+      "id": "engine",
+      "parentId": "main",
+      "label": "Coordinator",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791587341089,
+      "summary": "Implements IaeApi: orchestrates sessions, map ops, agenda and events.",
+      "paths": [
+        "src/main/engine/"
+      ],
+      "techLabel": "Engine"
+    },
+    "engine-lead": {
+      "id": "engine-lead",
+      "parentId": "engine",
+      "label": "Archie",
+      "kind": "ai",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791587341089,
+      "summary": "Warm streaming Opus session that converses and drives the map via iae MCP tools.",
+      "paths": [
+        "src/main/engine/lead.ts",
+        "src/main/engine/lead.test.ts",
+        "src/main/engine/lead-options.ts",
+        "src/main/engine/context.ts",
+        "src/main/engine/context.test.ts",
+        "src/main/engine/speech.ts",
+        "src/main/engine/speech.test.ts",
+        "src/main/engine/prompts.ts",
+        "src/main/engine/tools.ts",
+        "src/main/engine/tools.test.ts",
+        "src/main/engine/sdk.ts"
+      ],
+      "techLabel": "Lead"
+    },
+    "engine-crew": {
+      "id": "engine-crew",
+      "parentId": "engine",
+      "label": "Builders",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791587341089,
+      "summary": "Builder/scout Claude Code jobs with permissions, shell gate and activity streaming.",
+      "paths": [
+        "src/main/engine/crew.ts",
+        "src/main/engine/crew-tools.ts",
+        "src/main/engine/builder.ts",
+        "src/main/engine/gate.ts",
+        "src/main/engine/gate.test.ts",
+        "src/main/engine/activity.ts",
+        "src/main/engine/activity.test.ts",
+        "src/main/engine/passthrough.ts",
+        "src/main/engine/workspace.ts"
+      ],
+      "techLabel": "Crew"
+    },
+    "engine-carto": {
+      "id": "engine-carto",
+      "parentId": "engine",
+      "label": "Code Reader",
+      "kind": "ai",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791587341089,
+      "summary": "Read-only sessions that map existing repos and annotate files.",
+      "paths": [
+        "src/main/engine/cartographer.ts",
+        "src/main/engine/notes.ts"
+      ],
+      "techLabel": "Cartographer"
+    },
+    "engine-sketcher": {
+      "id": "engine-sketcher",
+      "parentId": "engine",
+      "label": "Live Sketcher",
+      "kind": "ai",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791587341089,
+      "summary": "Warm Haiku session turning draft speech into ghost component proposals.",
+      "paths": [
+        "src/main/engine/sketcher.ts",
+        "src/main/engine/sketcher.test.ts"
+      ],
+      "techLabel": "Sketcher"
+    },
+    "engine-map": {
+      "id": "engine-map",
+      "parentId": "engine",
+      "label": "Map Ops",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791488619377,
+      "summary": "Applies and diffs map operations so agents keep the map truthful.",
+      "paths": [
+        "src/main/engine/mapops.ts",
+        "src/main/engine/mapops.test.ts",
+        "src/main/engine/mapdiff.ts",
+        "src/main/engine/mapdiff.test.ts"
+      ]
+    },
+    "engine-agenda": {
+      "id": "engine-agenda",
+      "parentId": "engine",
+      "label": "Questions",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791587341089,
+      "summary": "Open questions/decisions plus the idle heartbeat that nudges the lead.",
+      "paths": [
+        "src/main/engine/agenda.ts",
+        "src/main/engine/agenda.test.ts",
+        "src/main/engine/pulse.ts",
+        "src/main/engine/pulse.test.ts",
+        "src/main/engine/repeat.ts",
+        "src/main/engine/repeat.test.ts"
+      ],
+      "techLabel": "Agenda & Pulse"
+    },
+    "engine-core": {
+      "id": "engine-core",
+      "parentId": "engine",
+      "label": "Engine Core",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791488619377,
+      "summary": "Engine class and per-project session wiring.",
+      "paths": [
+        "src/main/engine/engine.ts",
+        "src/main/engine/project-session.ts"
+      ]
+    },
+    "project": {
+      "id": "project",
+      "parentId": "main",
+      "label": "Project Index",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791488619377,
+      "summary": "Gitignore-aware file scanning/watching, heuristic first map and .iae persistence.",
+      "paths": [
+        "src/main/project/"
+      ]
+    },
+    "project-store": {
+      "id": "project-store",
+      "parentId": "project",
+      "label": "Store",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791488619377,
+      "summary": "Reads/writes .iae project files and recent projects.",
+      "paths": [
+        "src/main/project/store.ts"
+      ]
+    },
+    "project-files": {
+      "id": "project-files",
+      "parentId": "project",
+      "label": "File Index",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791488619377,
+      "summary": "Scans and watches project files with chokidar.",
+      "paths": [
+        "src/main/project/files.ts",
+        "src/main/project/files.test.ts"
+      ]
+    },
+    "project-heuristic": {
+      "id": "project-heuristic",
+      "parentId": "project",
+      "label": "Heuristic Map",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488619377,
+      "updatedAt": 1791488619377,
+      "summary": "Instant first map from folders and manifests.",
+      "paths": [
+        "src/main/project/heuristic.ts",
+        "src/main/project/heuristic.test.ts"
+      ]
+    },
+    "renderer-state": {
+      "id": "renderer-state",
+      "parentId": "renderer",
+      "label": "State Store",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488635186,
+      "updatedAt": 1791488635186,
+      "summary": "Zustand store folding every EngineEvent through one reduce().",
+      "paths": [
+        "src/renderer/src/state/"
+      ]
+    },
+    "renderer-bridge": {
+      "id": "renderer-bridge",
+      "parentId": "renderer",
+      "label": "Bridge Client",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488635186,
+      "updatedAt": 1791488635186,
+      "summary": "Access to window.iae, with a mock engine for browser dev.",
+      "paths": [
+        "src/renderer/src/bridge/"
+      ]
+    },
+    "shared": {
+      "id": "shared",
+      "parentId": "bridge",
+      "label": "Shared Types",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488635186,
+      "updatedAt": 1791488635186,
+      "summary": "IaeApi, EngineEvent and ArchMap model shared by both processes.",
+      "paths": [
+        "src/shared/"
+      ]
+    },
+    "preload": {
+      "id": "preload",
+      "parentId": "bridge",
+      "label": "Preload",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488635186,
+      "updatedAt": 1791488635186,
+      "summary": "Exposes window.iae via contextBridge, forwarding to ipcRenderer.",
+      "paths": [
+        "src/preload/"
+      ]
+    },
+    "infra-config": {
+      "id": "infra-config",
+      "parentId": "infra",
+      "label": "Build Config",
+      "kind": "config",
+      "status": "built",
+      "createdAt": 1791488635186,
+      "updatedAt": 1791488635186,
+      "summary": "package.json, tsconfigs, vite/electron-vite, vitest and electron-builder config.",
+      "paths": [
+        "package.json",
+        "package-lock.json",
+        "tsconfig.json",
+        "tsconfig.node.json",
+        "tsconfig.web.json",
+        "electron.vite.config.ts",
+        "vite.web.config.ts",
+        "vitest.config.ts",
+        "electron-builder.yml",
+        ".gitignore"
+      ]
+    },
+    "infra-scripts": {
+      "id": "infra-scripts",
+      "parentId": "infra",
+      "label": "Dev Scripts",
+      "kind": "infra",
+      "status": "built",
+      "createdAt": 1791488635186,
+      "updatedAt": 1791488635186,
+      "summary": "Voice model fetch, screenshots and engine smoke tests.",
+      "paths": [
+        "scripts/"
+      ]
+    },
+    "infra-docs": {
+      "id": "infra-docs",
+      "parentId": "infra",
+      "label": "Docs",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488635186,
+      "updatedAt": 1791488635186,
+      "summary": "PRD, architecture, design and guides.",
+      "paths": [
+        "docs/",
+        "README.md",
+        "CLAUDE.md"
+      ]
+    },
+    "infra-example": {
+      "id": "infra-example",
+      "parentId": "infra",
+      "label": "Recipe Box",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791488635186,
+      "updatedAt": 1791488635186,
+      "summary": "Sample monorepo fixture used to demo cartography.",
+      "paths": [
+        "examples/"
+      ]
+    },
+    "voice-kokoro": {
+      "id": "voice-kokoro",
+      "parentId": "renderer-voice",
+      "label": "Kokoro TTS",
+      "kind": "ai",
+      "status": "built",
+      "createdAt": 1791488742546,
+      "updatedAt": 1791575408738,
+      "summary": "Local neural voice that streams Archie's replies sentence by sentence.",
+      "tech": [
+        "kokoro-js",
+        "ONNX"
+      ]
+    },
+    "crew-resume": {
+      "id": "crew-resume",
+      "parentId": "engine-crew",
+      "label": "Builder Resume",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791492467620,
+      "updatedAt": 1791575408738,
+      "summary": "Saves each builder job and its Claude Code session to .iae/crew.json so unfinished jobs pick up again after a restart.",
+      "paths": [
+        "src/main/engine/crew-persist.ts",
+        "src/main/engine/crew-persist.test.ts"
+      ]
+    },
+    "map-live-diff": {
+      "id": "map-live-diff",
+      "parentId": "renderer-map",
+      "label": "Live Diffs",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791492467620,
+      "updatedAt": 1791575408738,
+      "summary": "Shows each builder's edits as they happen, so the person can see and steer."
+    },
+    "map-crew-progress": {
+      "id": "map-crew-progress",
+      "parentId": "renderer-map",
+      "label": "Crew Progress",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791492567883,
+      "updatedAt": 1791575408738,
+      "summary": "Per-builder progress bar and current step, from each builder's todo checklist."
+    }
+  },
+  "edges": {
+    "renderer->main": {
+      "id": "renderer->main",
+      "from": "renderer",
+      "to": "main",
+      "kind": "calls"
+    },
+    "renderer->bridge": {
+      "id": "renderer->bridge",
+      "from": "renderer",
+      "to": "bridge",
+      "kind": "calls",
+      "label": "window.iae"
+    },
+    "bridge->main": {
+      "id": "bridge->main",
+      "from": "bridge",
+      "to": "main",
+      "kind": "calls",
+      "label": "iae:invoke"
+    },
+    "main->renderer": {
+      "id": "main->renderer",
+      "from": "main",
+      "to": "renderer",
+      "kind": "events",
+      "label": "EngineEvent"
+    },
+    "main->claude": {
+      "id": "main->claude",
+      "from": "main",
+      "to": "claude",
+      "kind": "calls",
+      "label": "agent sessions"
+    },
+    "main->project-data": {
+      "id": "main->project-data",
+      "from": "main",
+      "to": "project-data",
+      "kind": "writes",
+      "label": "persists"
+    },
+    "main-shell->engine-core": {
+      "id": "main-shell->engine-core",
+      "from": "main-shell",
+      "to": "engine-core",
+      "kind": "calls",
+      "label": "dispatch"
+    },
+    "engine-core->engine-lead": {
+      "id": "engine-core->engine-lead",
+      "from": "engine-core",
+      "to": "engine-lead",
+      "kind": "calls",
+      "label": "user turns"
+    },
+    "engine-lead->engine-crew": {
+      "id": "engine-lead->engine-crew",
+      "from": "engine-lead",
+      "to": "engine-crew",
+      "kind": "calls",
+      "label": "delegate"
+    },
+    "engine-crew->engine-agenda": {
+      "id": "engine-crew->engine-agenda",
+      "from": "engine-crew",
+      "to": "engine-agenda",
+      "kind": "calls",
+      "label": "ask_architect"
+    },
+    "engine-agenda->engine-lead": {
+      "id": "engine-agenda->engine-lead",
+      "from": "engine-agenda",
+      "to": "engine-lead",
+      "kind": "events",
+      "label": "nudges"
+    },
+    "engine-crew->engine-map": {
+      "id": "engine-crew->engine-map",
+      "from": "engine-crew",
+      "to": "engine-map",
+      "kind": "writes",
+      "label": "map_update"
+    },
+    "engine-carto->engine-map": {
+      "id": "engine-carto->engine-map",
+      "from": "engine-carto",
+      "to": "engine-map",
+      "kind": "writes",
+      "label": "map_update"
+    },
+    "engine-core->project-heuristic": {
+      "id": "engine-core->project-heuristic",
+      "from": "engine-core",
+      "to": "project-heuristic",
+      "kind": "calls",
+      "label": "first map"
+    },
+    "engine-core->project-store": {
+      "id": "engine-core->project-store",
+      "from": "engine-core",
+      "to": "project-store",
+      "kind": "writes",
+      "label": "persist"
+    },
+    "project-store->project-data": {
+      "id": "project-store->project-data",
+      "from": "project-store",
+      "to": "project-data",
+      "kind": "writes",
+      "label": ".iae/"
+    },
+    "engine-lead->claude": {
+      "id": "engine-lead->claude",
+      "from": "engine-lead",
+      "to": "claude",
+      "kind": "calls",
+      "label": "Opus stream"
+    },
+    "engine-crew->claude": {
+      "id": "engine-crew->claude",
+      "from": "engine-crew",
+      "to": "claude",
+      "kind": "calls",
+      "label": "Claude Code"
+    },
+    "engine-sketcher->claude": {
+      "id": "engine-sketcher->claude",
+      "from": "engine-sketcher",
+      "to": "claude",
+      "kind": "calls",
+      "label": "Haiku"
+    },
+    "engine-carto->claude": {
+      "id": "engine-carto->claude",
+      "from": "engine-carto",
+      "to": "claude",
+      "kind": "calls",
+      "label": "read-only"
+    },
+    "renderer-bridge->preload": {
+      "id": "renderer-bridge->preload",
+      "from": "renderer-bridge",
+      "to": "preload",
+      "kind": "calls",
+      "label": "invoke"
+    },
+    "renderer-voice->renderer-conversation": {
+      "id": "renderer-voice->renderer-conversation",
+      "from": "renderer-voice",
+      "to": "renderer-conversation",
+      "kind": "events",
+      "label": "transcripts"
+    },
+    "renderer-conversation->renderer-bridge": {
+      "id": "renderer-conversation->renderer-bridge",
+      "from": "renderer-conversation",
+      "to": "renderer-bridge",
+      "kind": "calls",
+      "label": "send/draft"
+    },
+    "renderer-state->renderer-map": {
+      "id": "renderer-state->renderer-map",
+      "from": "renderer-state",
+      "to": "renderer-map",
+      "kind": "depends",
+      "label": "map state"
+    },
+    "renderer-bridge->renderer-state": {
+      "id": "renderer-bridge->renderer-state",
+      "from": "renderer-bridge",
+      "to": "renderer-state",
+      "kind": "events",
+      "label": "reduce"
+    },
+    "renderer-voice->huggingface": {
+      "id": "renderer-voice->huggingface",
+      "from": "renderer-voice",
+      "to": "huggingface",
+      "kind": "reads",
+      "label": "Whisper"
+    },
+    "preload->main-shell": {
+      "id": "preload->main-shell",
+      "from": "preload",
+      "to": "main-shell",
+      "kind": "calls",
+      "label": "iae:invoke"
+    },
+    "voice-kokoro->huggingface": {
+      "id": "voice-kokoro->huggingface",
+      "from": "voice-kokoro",
+      "to": "huggingface",
+      "kind": "reads",
+      "label": "model"
+    },
+    "crew-resume->project-store": {
+      "id": "crew-resume->project-store",
+      "from": "crew-resume",
+      "to": "project-store",
+      "kind": "writes",
+      "label": "crew.json"
+    }
+  }
+}
