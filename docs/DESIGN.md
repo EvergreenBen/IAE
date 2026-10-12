@@ -67,8 +67,9 @@ Sans marks controls and labels.
   On the right: **Restart to load changes** (only when Arxitect is running from
   source and its own main-process code changed), **Auto**, and a faint `⌘K`.
 - **Crew list** (top left, under the breadcrumb, only while agents work). One
-  row per agent: its mark, name and task; the line it's on now ("Editing
-  session.ts"); a 2px bar in its hue for how far through its own plan it is; and
+  row per agent: its mark, name and task; the line it's on now, in plain
+  words: the step of its plan ("Failed jobs try again"), else the kind of
+  work ("Reading the code"), never a file or command; a 2px bar in its hue for how far through its own plan it is; and
   at the right end, roughly how long is left ("~3 min left"), once a step has
   finished and there's something to estimate from. Before that it shows the
   step ("Step 1 of 4"), and with no plan, how long it has been going. A row
@@ -144,6 +145,11 @@ whole map. Keep it stable by seeding ELK with prior positions (or
   the summary with the developer's name (`techLabel`, `--ink-2`) and as many
   whole stack items as fit, up to three (`--ink-3`): "IPC Bridge · Electron IPC".
   Nodes without either look exactly as before.
+- **Changed**: a node owning a file a builder changed carries a small dot in
+  that builder's hue on the rim at 8 o'clock (the broken mark has 4), lifted
+  to the visible ancestor. It arrives once (a short scale-in) and stays while
+  the builder is on the crew list, so a finished change leaves its footprint
+  across the system until it's cleared.
 - **Activity bloom**: when an agent touches a file under a node, the visible
   ancestor gets one soft ring in the agent's hue that expands and fades
   (~900ms). It's rate-limited and never loops.
@@ -176,8 +182,12 @@ a single dot travels it once. It never streams continuously.
 
 Each active builder is a small token, a tiny Archie in its hue, docked at the
 top-right corner of the node it's working in (lifted to the visible ancestor).
-When zoomed in enough, a one-line activity shows beneath the node in
-`--ink-2`, for example "Editing session.ts". When the agent changes node, the
+A thin ring outside the token's halo fills one segment each time it finishes
+a step of its plan (no creeping, no loop). What it's on now replaces the
+node's summary in the caption: a 6px dot in its hue and the plan step in
+`--ink` ("Failed jobs try again"), or before a plan the kind of work
+("Reading the code"). Everything shown is in the person's terms: no file
+names, commands or code; those wait in the crew row and the lens. When the agent changes node, the
 token **glides** along a gentle curve (spring). Several agents on one node line
 up side by side. Hovering a token on the map opens a small
 card with its task, what it's doing now, and a quiet "Stop". A permission request shows as a small pill attached to the

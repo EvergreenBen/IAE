@@ -25,6 +25,10 @@ export interface NodeCardProps {
   selected: boolean;
   /** Hue of the agent building here, if any. */
   buildHue: number | null;
+  /** Hue of the builder that changed something in here, if any. */
+  changedHue: number | null;
+  /** What the builders here are on now, "hue\ttext" per line: shown in place of the summary. */
+  doing: string;
   /** Stagger delay for entrance (seconds); null = no entrance (already there). */
   enterDelay: number | null;
   /** Where to grow from (a ghost's spot) instead of fading in place. */
@@ -33,7 +37,7 @@ export interface NodeCardProps {
   focus: boolean;
 }
 
-function NodeCardImpl({ node, box, chips, files, selected, buildHue, enterDelay, from, interactive, focus }: NodeCardProps) {
+function NodeCardImpl({ node, box, chips, files, selected, buildHue, changedHue, doing, enterDelay, from, interactive, focus }: NodeCardProps) {
   const status = node.status;
   const building = status === 'building' || buildHue !== null;
   const childList = chips ? chips.split('\n') : [];
@@ -103,6 +107,16 @@ function NodeCardImpl({ node, box, chips, files, selected, buildHue, enterDelay,
             <Mark name="alert" size={13} />
           </span>
         )}
+        {changedHue !== null && (
+          <motion.span
+            className={s.changed}
+            style={{ ['--hue' as string]: `var(--agent-${changedHue % 6})` }}
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.32, ease: EASE_OUT }}
+            aria-label="Changed"
+          />
+        )}
         {building && <span className={s.sheen} style={{ ['--hue' as string]: buildHue !== null ? `var(--agent-${buildHue % 6})` : 'var(--ink-3)' }} />}
       </div>
       <div className={s.caption}>
@@ -115,7 +129,21 @@ function NodeCardImpl({ node, box, chips, files, selected, buildHue, enterDelay,
             </span>
           </div>
         )}
-        {node.summary ? <div className={s.summary}>{node.summary}</div> : <div className={s.summaryEmpty}>{fallbackLine(node)}</div>}
+        {doing ? (
+          doing.split('\n').map((line) => {
+            const [hue, text] = line.split('\t');
+            return (
+              <div key={line} className={s.doing}>
+                <span className={s.doingDot} style={{ background: `var(--agent-${Number(hue) % 6})` }} />
+                <span className={s.doingText}>{text}</span>
+              </div>
+            );
+          })
+        ) : node.summary ? (
+          <div className={s.summary}>{node.summary}</div>
+        ) : (
+          <div className={s.summaryEmpty}>{fallbackLine(node)}</div>
+        )}
         {box.container && childList.length > 0 && (
           <div className={s.chips}>
             {shown.map((c) => (

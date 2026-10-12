@@ -61,6 +61,11 @@ export class Crew {
   constructor(private readonly d: CrewDeps) {}
 
   /** Agents to show in a project snapshot. */
+  /** The map changed: anyone standing on a node that's gone moves somewhere real. */
+  rehome(): void {
+    for (const run of this.runs.values()) run.rehome();
+  }
+
   visible(): AgentInfo[] {
     return [...this.runs.values()].filter((r) => !this.finishedAt.has(r.agent.id) || this.kept.includes(r.agent.id)).map((r) => r.agent);
   }

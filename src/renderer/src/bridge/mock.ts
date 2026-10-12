@@ -230,18 +230,18 @@ export function createMockBridge(): IaeBridge {
     runBuilder(
       { id: 'ada', name: 'Ada', role: 'builder', hue: 0, task: 'Add sliding session expiry', nodeId: 'api-auth' },
       [
-        { path: 'apps/api/src/auth/session.ts', activity: 'Editing session.ts', nodeId: 'api-auth' },
-        { path: 'apps/api/db/migrations/0002_sessions.sql', activity: 'Writing a migration', nodeId: 'postgres' },
-        { path: 'apps/api/src/auth/middleware.ts', activity: 'Wiring the middleware', nodeId: 'api-auth' },
+        { path: 'apps/api/src/auth/session.ts', activity: 'Sessions stay alive while in use', nodeId: 'api-auth' },
+        { path: 'apps/api/db/migrations/0002_sessions.sql', activity: 'The database tracks when they expire', nodeId: 'postgres' },
+        { path: 'apps/api/src/auth/middleware.ts', activity: 'Every request extends the session', nodeId: 'api-auth' },
       ],
       'Sessions now slide forward on every request; added an index on expires_at.',
     );
     runBuilder(
       { id: 'kit', name: 'Kit', role: 'builder', hue: 1, task: 'Cook mode: keep screen awake', nodeId: 'web-pages' },
       [
-        { path: 'apps/web/lib/optimistic.ts', activity: 'Reading optimistic.ts', nodeId: 'web-state', action: 'read' },
-        { path: 'apps/web/app/cook/[id]/useWakeLock.ts', activity: 'Creating useWakeLock.ts', nodeId: 'web-pages', action: 'create' },
-        { path: 'apps/web/app/cook/[id]/page.tsx', activity: 'Editing cook page', nodeId: 'web-pages' },
+        { path: 'apps/web/lib/optimistic.ts', activity: 'Read how cook mode works', nodeId: 'web-state', action: 'read' },
+        { path: 'apps/web/app/cook/[id]/useWakeLock.ts', activity: 'The screen stays on while cooking', nodeId: 'web-pages', action: 'create' },
+        { path: 'apps/web/app/cook/[id]/page.tsx', activity: 'It turns off when you leave', nodeId: 'web-pages' },
       ],
       'Cook mode requests a wake lock and releases it on exit.',
       { tool: 'Bash', summary: 'Run npm install nosleep.js', detail: `cd ${ROOT} && npm install nosleep.js` },

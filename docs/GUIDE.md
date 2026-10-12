@@ -152,6 +152,7 @@ name a developer would use and its tech stack.
 | Solid rim | Built |
 | Dashed rim | Planned, not built yet |
 | A sheen travelling the rim | A builder is working here right now, in that builder's colour |
+| A small dot at 8 o'clock | A builder changed something in here, in that builder's colour (it stays until you clear the builder) |
 | Red rim and a small mark | Something here is broken |
 | A third ring outside the rim | This node has children — you can dive into it |
 | A bright blue ring | Selected |
@@ -204,15 +205,24 @@ them honestly rather than re-asking.
 ## 6. Builders
 
 Say *"build it"* and a builder appears on the map — a named figure (Ada, Kit,
-Rho, Juno, Max, Bea, Lev, Ivy) standing on the node it's changing, with a
-one-line description of what it's doing right now.
+Rho, Juno, Max, Bea, Lev, Ivy) standing on the node it's changing. Everything
+it shows is in your terms, never code: under the node, in place of its
+description, is the step of its plan it's on ("Failed jobs try again"), and a
+thin ring round the figure fills a segment each time a step is done. Before it
+has a plan the line says what kind of work it's doing ("Reading the code",
+"Making changes", "Running the tests", "Thinking it through"). The figure moves
+to each part of your system as it changes it, and every part it changed keeps a
+small dot in its colour, so you can see the footprint of a change at a glance.
+The files, diffs and commands are there when you want them (open its row in the
+crew list), never pushed at you.
 
 Builders are **real Claude Code sessions**. They load your `CLAUDE.md`, your
 skills, plugins, hooks, MCP servers and permissions. Nothing is simulated.
 
 - **The crew list** (top left) has a row for each agent at work: what it's
   doing this moment, a bar for how far through its plan it is, and roughly how
-  long it has left. Each builder sends its own plan once it has looked around,
+  long it has left. Each builder sends its own plan, in plain words, after a
+  quick look and before its first edit,
   and the estimate comes from how long its finished steps took. **Click a row**
   for the plan, **Show** (fly to where it's working) and **Stop**.
 - **See what it changed.** A row counts the files its builder has edited

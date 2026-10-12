@@ -3,7 +3,7 @@
 // step's end until the builder says it's done; the estimate comes from how
 // long its finished steps took, so there is none until one has.
 
-import type { AgentProgress } from '@shared/model';
+import type { AgentInfo, AgentProgress } from '@shared/model';
 
 export interface Estimate {
   /** 0..1, for the bar. */
@@ -46,4 +46,20 @@ export function stepText(p: AgentProgress | undefined): string | null {
   if (!p?.steps.length) return null;
   const n = Math.min(p.done + 1, p.steps.length);
   return `Step ${n} of ${p.steps.length}`;
+}
+
+/**
+ * What a builder is on now, in its plan's own plain words when it has a plan
+ * ("The weekly email lists retries"), else its activity ("Reading the code").
+ */
+export function nowText(a: Pick<AgentInfo, 'progress' | 'activity' | 'status'>): string | undefined {
+  const p = a.progress;
+  if (a.status === 'waiting' || a.status === 'done' || a.status === 'starting' || !p?.steps.length) return a.activity;
+  return p.done < p.steps.length ? p.steps[p.done] : 'Finishing up';
+}
+
+/** Finished steps out of the plan (0..1), or null without one. Moves only when a step is done. */
+export function planFraction(p: AgentProgress | undefined): number | null {
+  if (!p?.steps.length) return null;
+  return Math.min(p.done, p.steps.length) / p.steps.length;
 }

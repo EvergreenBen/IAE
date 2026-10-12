@@ -45,6 +45,28 @@
     var(--shadow-1);
 }
 
+/* Its plan so far: a thin ring outside the token's halo, one segment per finished step. */
+.ring {
+  position: absolute;
+  inset: -5px;
+  width: 32px;
+  height: 32px;
+  rotate: -90deg;
+  pointer-events: none;
+}
+.ringTrack,
+.ringFill {
+  fill: none;
+  stroke-width: 1.5;
+}
+.ringTrack {
+  stroke: var(--line);
+}
+.ringFill {
+  stroke-linecap: round;
+  transition: stroke-dasharray var(--t-slow) var(--ease-out);
+}
+
 /* The token and its card: hovering (or focusing) either keeps the card open. */
 .agent {
   position: relative;
@@ -144,39 +166,6 @@
   background: var(--bad-wash);
 }
 
-.activity {
-  position: absolute;
-  left: 0;
-  top: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  pointer-events: none;
-  transition: opacity var(--t-med) var(--ease-out);
-}
-[data-lod='tiny'] .activity:not([data-selected]),
-[data-lod='far'] .activity:not([data-selected]),
-[data-lod='mid'] .activity:not([data-selected]) {
-  opacity: 0;
-}
-.line {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  color: var(--ink-2);
-  white-space: nowrap;
-}
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex: none;
-}
-.text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 .perm {
   display: flex;

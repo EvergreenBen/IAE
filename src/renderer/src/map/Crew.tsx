@@ -1,6 +1,7 @@
 // Builders on the map: a token docked at the top-right of the node each one is
-// working in (lifted to what's visible), gliding when it moves. Activity reads
-// beneath the node when zoomed in; permission prompts hang off the token.
+// working in (lifted to what's visible), gliding when it moves, with a thin ring
+// that fills as it finishes the steps of its plan. What it's on now reads in the
+// node's caption (NodeCard); permission prompts hang off the token.
 import { memo } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { AgentInfo } from '@shared/model';
@@ -9,6 +10,7 @@ import { bridge } from '../bridge';
 import { ui, useIae, type PermissionRequest } from '../state/store';
 import { useAnchorFn, type Anchor } from './anchors';
 import { useCamera } from './context';
+import { nowText, planFraction } from './crewTime';
 import { clamp, overlaps, type Rect } from './geometry';
 import { useMapLocal } from './mapStore';
 import { tokenPoint, tokensByAnchor, usePermsOnMap } from './permHome';
@@ -21,12 +23,9 @@ const GLIDE_Y = { type: 'spring', stiffness: 96, damping: 17 } as const;
 export function Crew() {
   const agents = useIae((st) => st.agents);
   const permissions = useIae((st) => st.permissions);
-  const selected = useIae((st) => st.selectedNodeId);
   const anchor = useAnchorFn();
 
   const groups = tokensByAnchor(Object.values(agents), anchor);
-  const byAnchor = new Map([...groups].map(([id, g]) => [id, g.list]));
-  const anchors = new Map([...groups].map(([id, g]) => [id, g.at]));
   const placed = [...groups.values()].flatMap(({ at, list }) => list.map((a, i) => ({ a, at, i })));
   // A prompt hangs off its token while the token is on screen; otherwise it shows in the chrome (permHome.ts).
   const onMap = usePermsOnMap();
@@ -50,27 +49,6 @@ export function Crew() {
           <Token key={a.id} agent={a} at={at} index={i} perm={onMap.has(a.id) ? (permissions.find((p) => p.agentId === a.id) ?? null) : null} below={tipBelow(at, i)} />
         ))}
       </AnimatePresence>
-      {[...byAnchor.entries()].map(([id, list]) => {
-        const at = anchors.get(id)!;
-        if (at.frame) return null;
-        const lines = list.filter((a) => a.activity && a.status !== 'done');
-        if (!lines.length) return null;
-        return (
-          <div
-            key={`act:${id}`}
-            className={s.activity}
-            data-selected={selected === id || undefined}
-            style={{ transform: `translate(${at.rect.x + 14}px, ${at.rect.y + at.rect.h + 9}px)`, width: Math.max(at.rect.w, 260) }}
-          >
-            {lines.map((a) => (
-              <div key={a.id} className={s.line}>
-                <span className={s.dot} style={{ background: `var(--agent-${a.hue % 6})` }} />
-                <span className={s.text}>{a.activity}</span>
-              </div>
-            ))}
-          </div>
-        );
-      })}
     </>
   );
 }
@@ -80,6 +58,7 @@ const Token = memo(function Token({ agent, at, index, perm, below }: { agent: Ag
   const x = at.rect.x + at.rect.w - (at.frame ? 30 : 18);
   const y = at.rect.y + (at.frame ? 36 : 0);
   const state = perm ? 'waiting' : agent.status;
+  const plan = agent.status === 'done' ? null : planFraction(agent.progress);
   return (
     <motion.div
       className={s.anchor}
@@ -95,13 +74,14 @@ const Token = memo(function Token({ agent, at, index, perm, below }: { agent: Ag
               type="button"
               className={s.token}
               data-agent={agent.id}
-              aria-label={`${agent.name}: ${agent.activity ?? agent.task}`}
+              aria-label={`${agent.name}: ${nowText(agent) ?? agent.task}`}
               onClick={(e) => {
                 e.stopPropagation();
                 if (agent.nodeId) ui.select(at.frame ? null : at.id);
               }}
             >
               <CrewMark hue={agent.hue} name={agent.name} size={22} state={state} />
+              {plan !== null && <PlanRing fraction={plan} hue={agent.hue} />}
             </button>
             <AgentCard agent={agent} className={s.tip} below={below} />
           </div>
@@ -111,6 +91,16 @@ const Token = memo(function Token({ agent, at, index, perm, below }: { agent: Ag
     </motion.div>
   );
 });
+
+/** How much of its plan is done: a thin ring round the token that grows a segment per finished step. */
+function PlanRing({ fraction, hue }: { fraction: number; hue: number }) {
+  return (
+    <svg className={s.ring} viewBox="0 0 32 32" aria-hidden>
+      <circle className={s.ringTrack} cx="16" cy="16" r="14.5" />
+      <circle className={s.ringFill} cx="16" cy="16" r="14.5" pathLength={1} strokeDasharray={`${fraction} 1`} style={{ stroke: `var(--agent-${hue % 6})` }} />
+    </svg>
+  );
+}
 
 /**
  * What a builder is doing, and a quiet way to stop it. Shown on hover (or
@@ -126,7 +116,7 @@ export function AgentCard({ agent, where, className, below }: { agent: AgentInfo
         {where && <span className={s.tipWhere}> · {where}</span>}
       </span>
       <span className={s.tipTask}>{doing}</span>
-      {live && agent.activity && agent.activity !== agent.task && <span className={s.tipActivity}>{agent.activity}</span>}
+      {live && nowText(agent) && nowText(agent) !== agent.task && <span className={s.tipActivity}>{nowText(agent)}</span>}
       {live && (
         <button type="button" className={s.stop} onClick={() => void bridge.stopAgent(agent.id)}>
           Stop {agent.name}

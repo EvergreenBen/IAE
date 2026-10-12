@@ -133,6 +133,20 @@
   pointer-events: none;
 }
 
+/* Changed by a builder: a small dot in its hue on the rim at 8 o'clock (the broken mark has 4). */
+.changed {
+  position: absolute;
+  left: 14.6%;
+  top: 85.4%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--hue);
+  box-shadow: 0 0 0 2px var(--paper);
+  pointer-events: none;
+}
+
 /* ── the caption, under the disc ────────────────────────────────────────── */
 
 .caption {
@@ -162,6 +176,29 @@
 }
 .summaryEmpty {
   color: var(--ink-3);
+}
+
+/* A builder at work here: what it's on now, in plain words, in place of the summary. */
+.doing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: 100%;
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  color: var(--ink);
+}
+.doingDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.doingText {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Detail on demand: the developer's name and stack open above the summary on

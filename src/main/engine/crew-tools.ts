@@ -130,7 +130,7 @@ export function createCrewTools(h: CrewToolHost): McpSdkServerConfigWithInstance
     tools.push(
       tool(
         'progress',
-        'Show the person how far along you are: a progress bar with a time-left estimate beside your name. Once you know the plan, send steps: 3–7 short plain-English steps in order ("Read the voice code", "Add the voice picker", "Test it"). Each time you finish one, send done: how many are finished, in the same message as your next tool call so it costs no time. Send steps again if the plan changes.',
+        'Show the person how far along you are. They see your current step on the map, where you\'re working, and a progress bar with a time-left estimate beside your name. Send steps as soon as you know your plan, before your first edit: 3–6 steps in order, each one what the person would notice or what changes in their system, in everyday words under 8 words, never file names or code ("Failed jobs try again", "Wait longer between tries", "The weekly email lists retries", "Check it all works"). Each time you finish one, send done: how many are finished, in the same message as your next tool call so it costs no time. Send steps again if the plan changes.',
         {
           steps: z.array(z.string()).optional().describe('The whole plan, in order.'),
           done: z.number().int().min(0).optional().describe('How many steps are finished.'),

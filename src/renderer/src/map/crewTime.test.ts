@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimate, leftText, stepText } from './crewTime';
+import { estimate, leftText, nowText, planFraction, stepText } from './crewTime';
 
 const plan = ['Read the code', 'Add the picker', 'Wire playback', 'Test it'];
 const T = 1_000_000;
@@ -44,5 +44,22 @@ describe('how long a builder has left', () => {
     expect(leftText(120 * 60_000)).toBe('~2 h left');
     expect(stepText({ steps: plan, done: 1, spentMs: 0, stepAt: T })).toBe('Step 2 of 4');
     expect(stepText({ steps: plan, done: 4, spentMs: 0, stepAt: T })).toBe('Step 4 of 4');
+  });
+});
+
+describe('what a builder is on now', () => {
+  const progress = { steps: ['Failed jobs try again', 'The weekly email lists retries'], done: 1, spentMs: 60_000, stepAt: 0 };
+  it('says the step of its plan in hand, in its own words', () => {
+    expect(nowText({ status: 'working', activity: 'Making changes', progress })).toBe('The weekly email lists retries');
+    expect(nowText({ status: 'thinking', activity: 'Thinking it through', progress })).toBe('The weekly email lists retries');
+  });
+  it('falls back to the plain activity before there is a plan, and finishes up after the last step', () => {
+    expect(nowText({ status: 'working', activity: 'Reading the code' })).toBe('Reading the code');
+    expect(nowText({ status: 'thinking', activity: 'Thinking it through', progress: { ...progress, done: 2 } })).toBe('Finishing up');
+    expect(nowText({ status: 'waiting', activity: 'Waiting for your answer', progress })).toBe('Waiting for your answer');
+  });
+  it('moves the ring only when a step is finished', () => {
+    expect(planFraction(undefined)).toBeNull();
+    expect(planFraction(progress)).toBe(0.5);
   });
 });

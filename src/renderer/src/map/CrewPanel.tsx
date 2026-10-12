@@ -11,7 +11,7 @@ import { bridge } from '../bridge';
 import { openChanges } from '../lens/control';
 import { ui, useIae } from '../state/store';
 import { useCamera } from './context';
-import { estimate, leftText, stepText } from './crewTime';
+import { estimate, leftText, nowText, stepText } from './crewTime';
 import { usePermsOnMap } from './permHome';
 import { Permission } from './Permission';
 import s from './CrewPanel.module.css';
@@ -77,7 +77,7 @@ function lineText(a: AgentInfo, waiting: boolean, asking: boolean): string {
   if (a.status === 'failed') return a.result ?? 'It stopped with an error.';
   if (waiting) return asking ? 'Waiting for your OK' : 'Waiting for your answer';
   if (a.status === 'done') return a.result ?? '';
-  return a.activity ?? '';
+  return nowText(a) ?? '';
 }
 
 export function CrewPanel() {

@@ -103,11 +103,22 @@ its constructor by `src/main/index.ts`.
   project's own test, typecheck or build scripts pass through. Builders are
   also told never to launch GUI apps, daemons, Docker, `sudo` or global
   installs.
-- The message stream becomes the visualisation. Each `tool_use` block becomes an
-  `agent/step`, `files/touched` (for Read/Edit/Write/MultiEdit/NotebookEdit
-  paths) and an `agent/upsert` carrying `activity` ("Editing session.ts"),
-  `file` and `nodeId` (`ownerOf(map, path)`, keeping the previous node when
-  it's unowned).
+- The message stream becomes the visualisation, in the person's terms. Each
+  `tool_use` block becomes an `agent/step` (the detailed line, "Editing
+  session.ts", for whoever opens the row), `files/touched` (for
+  Read/Edit/Write/MultiEdit/NotebookEdit paths) and an `agent/upsert` carrying
+  a plain `activity` (`plain.ts`: "Reading the code", "Making changes",
+  "Running the tests" — never a file or command), `file` and `nodeId`
+  (`ownerOf(map, path)`, else the node it's on while that still exists, else
+  its job's node). Builders run with `includePartialMessages: true`: a writing
+  tool's input is read as it streams, so the figure moves to the part being
+  changed as soon as the call names its file, not after the whole edit has
+  been written. Five quiet seconds after results come back it reads as
+  "Thinking it through". When the map is regrouped (`map/ops`), a builder
+  whose node is gone moves to one that exists (`Crew.rehome`). The renderer
+  shows the plan's current step (`crewTime.nowText`) in the node's caption in
+  place of its summary, a ring round the token for finished steps, and a dot
+  in the builder's hue on every node owning a file in `AgentInfo.changes`.
 - **What a builder changed** (`changes.ts`): each Edit, MultiEdit, Write or
   NotebookEdit `tool_use` is held by its id until its `tool_result` comes back.
   An error counts nothing. Otherwise the lines added and removed come from
@@ -129,7 +140,8 @@ its constructor by `src/main/index.ts`.
 - Builders get a small `iae` MCP server: `map_update` (add nodes and claim paths
   so the map stays truthful), `ask_architect` (raise a question through the
   lead's agenda; `blocking: true` waits for the answer) and `progress` (their
-  plan as 3–7 steps, then `done: n` as each finishes). `progress.ts` folds the
+  plan as 3–6 steps in everyday words about what changes for the person, sent
+  before the first edit, then `done: n` as each finishes). `progress.ts` folds the
   reports into `AgentInfo.progress` (steps, done, the time the finished steps
   took, when the current one began); a `TodoWrite` call counts too. The
   renderer's crew list estimates time left from it (`map/crewTime.ts`), and the

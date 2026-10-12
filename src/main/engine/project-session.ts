@@ -79,8 +79,15 @@ export class ProjectSession {
   }
 
   static async open(root: string, d: SessionDeps): Promise<ProjectSession> {
-    const ws = await Workspace.open(root, d.emit, NAME_POOL);
-    return new ProjectSession(ws, d, await ws.store.loadCrew());
+    let session: ProjectSession | undefined;
+    const emit = (e: EngineEvent) => {
+      d.emit(e);
+      // A regrouped map can take a builder's node away: it moves to one that's there.
+      if (e.type === 'map/ops') session?.crew.rehome();
+    };
+    const ws = await Workspace.open(root, emit, NAME_POOL);
+    session = new ProjectSession(ws, d, await ws.store.loadCrew());
+    return session;
   }
 
   snapshot(): ProjectSnapshot {
