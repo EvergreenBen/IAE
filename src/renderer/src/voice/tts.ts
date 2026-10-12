@@ -146,9 +146,16 @@ export class Speaker {
     if (this.skipPending === 'soft') this.skipPending = false;
   }
 
-  /** A reply that would *start* now stays silent (someone is talking); one already speaking is left to barge-in. */
+  /**
+   * A reply that would *start* now stays silent (someone is talking); one
+   * already speaking is left to barge-in. That reply is the stale one a
+   * pending skip was waiting for, so the skip is used up: the answer to what
+   * they're saying now must still be heard.
+   */
   muteIfNew(turnId: string): void {
-    if (turnId !== this.turnId) this.muted.add(turnId);
+    if (turnId === this.turnId || this.muted.has(turnId)) return;
+    this.muted.add(turnId);
+    this.skipPending = false;
   }
 
   /** Project switch: nothing queued or pending carries over. */

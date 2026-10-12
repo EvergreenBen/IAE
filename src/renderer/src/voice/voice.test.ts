@@ -62,6 +62,20 @@ describe('Vad', () => {
     expect(withEcho(0.12, 400)).toEqual(['start']);
   });
 
+  it('knows where speech began when it is only sure a while in', () => {
+    const vad = new Vad();
+    frames(vad, 0.003, 500);
+    vad.setStrict(true); // talking over Archie: a longer onset
+    // "What" (160ms), a breath, "does" (160ms), a breath, then the rest.
+    expect([...frames(vad, 0.1, 160), ...frames(vad, 0.004, 40), ...frames(vad, 0.1, 160), ...frames(vad, 0.004, 40)]).toEqual([]);
+    expect(frames(vad, 0.1, 400)).toEqual(['start']);
+    // Everything since the room was last quiet: the first word included.
+    expect(vad.speechFrames * 20).toBeGreaterThanOrEqual(400 + 200);
+    // A real gap resets it.
+    frames(vad, 0.003, 2000);
+    expect(vad.speechFrames).toBe(0);
+  });
+
   it('ignores clicks shorter than the onset', () => {
     const vad = new Vad();
     frames(vad, 0.003, 500);
