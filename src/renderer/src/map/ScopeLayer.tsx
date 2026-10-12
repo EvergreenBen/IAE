@@ -49,35 +49,42 @@ function buildHues(map: ArchMap, agents: Record<string, AgentInfo>, scopeId: str
 }
 
 /**
- * What the builders on each node are on now, in plain words, as "hue\ttext"
- * lines (a string keeps NodeCard's memo cheap). It takes the place of the
- * node's summary while they work there.
+ * What the builder on each node is on now, in plain words, as "hue\ttext"
+ * (a string keeps NodeCard's memo cheap). It takes the place of the node's
+ * summary while it works there; with several on one node, the first one's
+ * line and how many others ("+1"), so the caption keeps its height. The
+ * cartographer only reads: the map sharpening is what it shows.
  */
 function doingLines(map: ArchMap, agents: Record<string, AgentInfo>, scopeId: string | null): Map<string, string> {
-  const out = new Map<string, string[]>();
+  const out = new Map<string, { line: string; more: number }>();
   for (const a of Object.values(agents).sort((x, y) => x.startedAt - y.startedAt)) {
-    if (a.role === 'lead' || !a.nodeId || !ACTIVE.has(a.status)) continue;
+    if ((a.role !== 'builder' && a.role !== 'scout') || !a.nodeId || !ACTIVE.has(a.status)) continue;
     const text = nowText(a);
     const v = text ? visibleAncestor(map, a.nodeId, scopeId) : null;
     if (!v) continue;
-    out.set(v, [...(out.get(v) ?? []), `${a.hue}\t${text}`]);
+    const cur = out.get(v);
+    if (cur) cur.more++;
+    else out.set(v, { line: `${a.hue}\t${text}`, more: 0 });
   }
-  return new Map([...out].map(([id, lines]) => [id, lines.join('\n')]));
+  return new Map([...out].map(([id, { line, more }]) => [id, more ? `${line}\t+${more}` : line]));
 }
 
 /**
  * Every part a builder has changed, lifted to what this scope shows, in that
  * builder's hue: the footprint of a change across the system. It stays while
  * the builder is on the crew list (a finished one stays until cleared).
+ * Owners come from the scanned files; a file too new to be scanned asks the map.
  */
-function changedHues(map: ArchMap, agents: Record<string, AgentInfo>, scopeId: string | null): Map<string, number> {
+function changedHues(map: ArchMap, files: FileEntry[], agents: Record<string, AgentInfo>, scopeId: string | null): Map<string, number> {
   const out = new Map<string, number>();
   const newestFirst = Object.values(agents)
-    .filter((a) => a.role === 'builder' && a.changes?.length && a.status !== 'failed' && a.status !== 'stopped')
+    .filter((a) => a.role === 'builder' && a.changes?.length)
     .sort((x, y) => y.startedAt - x.startedAt);
+  if (!newestFirst.length) return out;
+  const owners = new Map(files.map((f) => [f.path, f.nodeId]));
   for (const a of newestFirst) {
     for (const c of a.changes!) {
-      const owner = ownerOf(map, c.path);
+      const owner = owners.get(c.path) ?? ownerOf(map, c.path);
       const v = owner ? visibleAncestor(map, owner, scopeId) : null;
       if (v && !out.has(v)) out.set(v, a.hue);
     }
@@ -103,7 +110,7 @@ export const ScopeLayer = memo(function ScopeLayer({ spec }: { spec: LayerSpec }
 
   const counts = fileCounts(map, files);
   const hues = useMemo(() => buildHues(map, agents, spec.scopeId), [map, agents, spec.scopeId]);
-  const changed = useMemo(() => changedHues(map, agents, spec.scopeId), [map, agents, spec.scopeId]);
+  const changed = useMemo(() => changedHues(map, files, agents, spec.scopeId), [map, files, agents, spec.scopeId]);
   const doing = useMemo(() => doingLines(map, agents, spec.scopeId), [map, agents, spec.scopeId]);
   const chips = useMemo(() => {
     const out = new Map<string, string>();

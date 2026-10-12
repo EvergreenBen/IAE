@@ -194,9 +194,13 @@ export function createMockBridge(): IaeBridge {
         // An edit adds the file to what it changed (newest first), with the counts from its diff.
         const change = st.action === 'read' ? null : mockChange(st.path, t);
         const changes: FileChange[] | undefined = change ? [change, ...(a.changes ?? []).filter((c) => c.path !== st.path)] : a.changes;
-        a = { ...a, status: 'working', nodeId: st.nodeId, activity: st.activity, file: st.path, progress, ...(changes ? { changes } : {}) };
+        // Like the engine: the plan step is in plain words, the activity is the kind of work, the step log names the file.
+        const plain = st.action === 'read' ? 'Reading the code' : st.action === 'create' ? 'Adding new code' : 'Making changes';
+        const file = st.path.split('/').pop();
+        const detail = `${st.action === 'read' ? 'Reading' : st.action === 'create' ? 'Creating' : 'Editing'} ${file}`;
+        a = { ...a, status: 'working', nodeId: st.nodeId, activity: plain, file: st.path, progress, ...(changes ? { changes } : {}) };
         emit({ type: 'agent/upsert', agent: a });
-        emit({ type: 'agent/step', agentId: a.id, step: { at: now(), kind: st.action === 'read' ? 'read' : 'edit', text: st.activity, path: st.path } });
+        emit({ type: 'agent/step', agentId: a.id, step: { at: now(), kind: st.action === 'read' ? 'read' : 'edit', text: detail, path: st.path } });
         emit({ type: 'files/touched', path: st.path, agentId: a.id, action: st.action ?? 'edit' });
       });
     });

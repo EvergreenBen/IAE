@@ -7,6 +7,7 @@ import type { EngineEvent } from '../../shared/events';
 import { describeMap, ownerOf } from '../../shared/map';
 import type { AgentInfo, Settings } from '../../shared/model';
 import { describeToolUse } from './activity';
+import { plainActivity } from './plain';
 import { createCrewTools, crewToolNames } from './crew-tools';
 import { OP_NAMES } from './mapops';
 import { cartographerPrompt } from './prompts';
@@ -127,8 +128,10 @@ export class Cartographer {
             const act = describeToolUse(ws.root, block.name, (block.input ?? {}) as Record<string, unknown>);
             emit({ type: 'agent/step', agentId: ATLAS_ID, step: { at: Date.now(), kind: act.kind, text: act.activity, ...(act.path ? { path: act.path } : {}) } });
             if (act.path && act.touch) emit({ type: 'files/touched', path: act.path, agentId: ATLAS_ID, action: act.touch });
-            const nodeId = (act.path ? ownerOf(ws.map, act.path) : null) ?? this.agent.nodeId;
-            this.update({ status: 'working', activity: act.activity, file: act.path, nodeId });
+            // Its own regroups can take away the node it stood on: then it stands nowhere until the next file.
+            const here = this.agent.nodeId && ws.map.nodes[this.agent.nodeId] ? this.agent.nodeId : null;
+            const nodeId = (act.path ? ownerOf(ws.map, act.path) : null) ?? here;
+            this.update({ status: 'working', activity: plainActivity(block.name, act), file: act.path, nodeId });
           }
         } else if (m.type === 'result') {
           this.input.close();

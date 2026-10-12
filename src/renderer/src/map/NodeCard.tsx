@@ -27,7 +27,7 @@ export interface NodeCardProps {
   buildHue: number | null;
   /** Hue of the builder that changed something in here, if any. */
   changedHue: number | null;
-  /** What the builders here are on now, "hue\ttext" per line: shown in place of the summary. */
+  /** What the builder here is on now, "hue\ttext" (and "\t+N" more builders): shown in place of the summary. */
   doing: string;
   /** Stagger delay for entrance (seconds); null = no entrance (already there). */
   enterDelay: number | null;
@@ -130,15 +130,7 @@ function NodeCardImpl({ node, box, chips, files, selected, buildHue, changedHue,
           </div>
         )}
         {doing ? (
-          doing.split('\n').map((line) => {
-            const [hue, text] = line.split('\t');
-            return (
-              <div key={line} className={s.doing}>
-                <span className={s.doingDot} style={{ background: `var(--agent-${Number(hue) % 6})` }} />
-                <span className={s.doingText}>{text}</span>
-              </div>
-            );
-          })
+          <Doing line={doing} />
         ) : node.summary ? (
           <div className={s.summary}>{node.summary}</div>
         ) : (
@@ -156,6 +148,18 @@ function NodeCardImpl({ node, box, chips, files, selected, buildHue, changedHue,
         )}
       </div>
     </motion.div>
+  );
+}
+
+/** A builder's line in the caption: its dot, what it's on, and how many more are here. */
+function Doing({ line }: { line: string }) {
+  const [hue, text, more] = line.split('\t');
+  return (
+    <div className={s.doing}>
+      <span className={s.doingDot} style={{ background: `var(--agent-${Number(hue) % 6})` }} />
+      <span className={s.doingText}>{text}</span>
+      {more && <span className={s.doingMore}>{more}</span>}
+    </div>
   );
 }
 

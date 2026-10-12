@@ -200,6 +200,10 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.doingMore {
+  flex: none;
+  color: var(--ink-3);
+}
 
 /* Detail on demand: the developer's name and stack open above the summary on
    hover or selection. Collapsed, the row takes no room (the negative margin

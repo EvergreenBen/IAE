@@ -97,7 +97,7 @@ function PlanRing({ fraction, hue }: { fraction: number; hue: number }) {
   return (
     <svg className={s.ring} viewBox="0 0 32 32" aria-hidden>
       <circle className={s.ringTrack} cx="16" cy="16" r="14.5" />
-      <circle className={s.ringFill} cx="16" cy="16" r="14.5" pathLength={1} strokeDasharray={`${fraction} 1`} style={{ stroke: `var(--agent-${hue % 6})` }} />
+      {fraction > 0 && <circle className={s.ringFill} cx="16" cy="16" r="14.5" pathLength={1} strokeDasharray={`${fraction} 1`} style={{ stroke: `var(--agent-${hue % 6})` }} />}
     </svg>
   );
 }

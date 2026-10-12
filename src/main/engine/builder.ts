@@ -6,7 +6,7 @@
 
 import { query, type CanUseTool, type PermissionResult, type PermissionUpdate, type Query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { EngineEvent } from '../../shared/events';
-import { describeMap, ownerOf } from '../../shared/map';
+import { ancestorsOf, describeMap, ownerOf } from '../../shared/map';
 import type { AgendaItem, AgentInfo, AgentStep, Autonomy, Settings } from '../../shared/model';
 import { describeToolUse, projectPath, stepText } from './activity';
 import { ChangeTracker } from './changes';
@@ -66,6 +66,9 @@ interface StreamEvent {
   delta?: { type: string; partial_json?: string };
 }
 
+/** The plan it shows: its own plain-words plan (progress tool) wins over Claude Code's todo list. */
+type PlanSource = 'progress' | 'todo';
+
 export class BuilderRun {
   agent: AgentInfo;
   input = new InputQueue();
@@ -93,6 +96,15 @@ export class BuilderRun {
   private thinkTimer: ReturnType<typeof setTimeout> | undefined;
   /** A writing tool whose input is streaming in, until it names its file. */
   private writing: { index: number; json: string } | null = null;
+  /** Top-level tool calls not yet answered, and a tool call still streaming in: it isn't thinking while either is. */
+  private readonly pendingTools = new Set<string>();
+  private streamingTool: number | null = null;
+  /** The last file it touched (tool calls without one don't clear it), and the node it stood on with that node's ancestors. */
+  private lastFile: string | null = null;
+  private lineage: string[] = [];
+  /** Its node went away and no other could be found: the next map change tries again. */
+  private lost = false;
+  private planFrom: PlanSource | null = null;
 
   constructor(
     readonly job: JobSpec,
@@ -101,6 +113,7 @@ export class BuilderRun {
   ) {
     this.agent = agent;
     this.changes = new ChangeTracker(d.ws.root);
+    this.trace(agent.nodeId);
     // A job resumed after a restart carries on counting from what it had changed.
     if (agent.changes?.length) this.changes.changes = [...agent.changes];
   }
@@ -114,8 +127,19 @@ export class BuilderRun {
   }
 
   update(patch: Partial<AgentInfo>): void {
+    if (patch.file) this.lastFile = patch.file;
+    if (patch.nodeId !== undefined && patch.nodeId !== this.agent.nodeId) {
+      this.lost = false;
+      this.trace(patch.nodeId);
+    }
     this.agent = { ...this.agent, ...patch };
     this.d.onUpdate(this.agent);
+  }
+
+  /** Remember the node it stands on and that node's ancestors, nearest first, for when the map is regrouped. */
+  private trace(nodeId: string | null): void {
+    const map = this.d.ws.map;
+    if (nodeId && map.nodes[nodeId]) this.lineage = [nodeId, ...ancestorsOf(map, nodeId).map((n) => n.id).reverse()];
   }
 
   start(): void {
@@ -154,6 +178,9 @@ export class BuilderRun {
     const ownTools = crewToolNames({ canAsk: true, canNote: !this.isScout, canProgress: !this.isScout });
     this.resuming = !!this.sessionId;
     this.workStartedAt = Date.now();
+    this.pendingTools.clear();
+    this.streamingTool = null;
+    this.trace(this.agent.nodeId);
 
     this.q = query({
       prompt: this.input,
@@ -196,36 +223,56 @@ export class BuilderRun {
 
   /**
    * Where to stand: the node that owns the file in hand, else where it already
-   * is (while that's still on the map), else its job's node.
+   * is (while that's still on the map), else the owner of the last file it
+   * touched, else the nearest part of where it stood that's still there, else
+   * its job's node.
    */
   private home(path?: string | null): string | null {
     const map = this.d.ws.map;
     const owner = path ? ownerOf(map, path) : null;
     if (owner) return owner;
     if (this.agent.nodeId && map.nodes[this.agent.nodeId]) return this.agent.nodeId;
-    const last = this.agent.file ? ownerOf(map, this.agent.file) : null;
+    const last = this.lastFile ? ownerOf(map, this.lastFile) : null;
     if (last) return last;
+    const kept = this.lineage.find((id) => map.nodes[id]);
+    if (kept) return kept;
     return this.job.nodeId && map.nodes[this.job.nodeId] ? this.job.nodeId : null;
   }
 
   /** The map changed under it (the cartographer regrouped things): if its node is gone, it stands somewhere real. */
   rehome(): void {
-    if (this.finished || !this.agent.nodeId || this.d.ws.map.nodes[this.agent.nodeId]) return;
-    this.update({ nodeId: this.home(this.agent.file) });
+    if (this.finished) return;
+    const id = this.agent.nodeId;
+    if (id ? this.d.ws.map.nodes[id] : !this.lost) return;
+    const next = this.home();
+    if (next === id) return;
+    this.update({ nodeId: next });
+    this.lost = next === null;
   }
 
-  /** Results are back and it's working out what's next: after a few quiet seconds, the line says so. */
+  /** Nothing in flight and nothing streaming: after a few quiet seconds it reads as thinking. */
   private armThinking(): void {
     clearTimeout(this.thinkTimer);
+    if (this.pendingTools.size || this.streamingTool !== null) return;
     this.thinkTimer = setTimeout(() => {
-      if (!this.finished && this.agent.status === 'working') this.update({ status: 'thinking', activity: THINKING });
+      if (!this.finished && this.agent.status === 'working' && !this.pendingTools.size && this.streamingTool === null) this.update({ status: 'thinking', activity: THINKING });
     }, THINK_AFTER_MS);
   }
 
   /** A tool call as it streams in: a write moves the figure to its part of the map as soon as it names the file. */
   private onStream(ev: StreamEvent): void {
+    if (ev.type === 'content_block_stop' && ev.index === this.streamingTool) {
+      this.streamingTool = null;
+      return;
+    }
+    if (ev.type === 'content_block_start' && ev.content_block?.type !== 'tool_use') {
+      // It's thinking or talking: that counts as thinking once it has gone on a while.
+      this.armThinking();
+      return;
+    }
     if (ev.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
       clearTimeout(this.thinkTimer);
+      this.streamingTool = ev.index ?? 0;
       const writes = WRITERS.has(ev.content_block.name ?? '');
       this.writing = writes ? { index: ev.index ?? 0, json: '' } : null;
       if (writes && this.agent.status !== 'waiting') this.update({ status: 'working', activity: 'Making changes' });
@@ -245,8 +292,10 @@ export class BuilderRun {
     if (path && this.agent.status !== 'waiting') this.update({ nodeId: this.home(path), file: path });
   }
 
-  /** The builder said where it is in its plan. */
-  private report(r: ProgressReport): void {
+  /** The builder said where it is in its plan. Its own plain plan, once sent, isn't replaced by its todo list. */
+  private report(r: ProgressReport, from: PlanSource = 'progress'): void {
+    if (from === 'todo' && this.planFrom === 'progress') return;
+    if (r.steps?.length) this.planFrom = from;
     const progress = nextProgress(this.agent.progress, r, Date.now(), this.workStartedAt);
     if (progress && progress !== this.agent.progress) this.update({ progress });
   }
@@ -319,13 +368,15 @@ export class BuilderRun {
           if (!m.parent_tool_use_id) {
             clearTimeout(this.thinkTimer);
             this.writing = null;
+            this.streamingTool = null;
+            if (block.id) this.pendingTools.add(block.id);
           }
           const input = (block.input && typeof block.input === 'object' ? block.input : {}) as Record<string, unknown>;
           // Bookkeeping, not work: it moves the bar, not the activity line.
           if (block.name === 'mcp__iae__progress') continue;
           if (block.name === 'TodoWrite' && !m.parent_tool_use_id) {
             const todos = todoReport(input);
-            if (todos) this.report(todos);
+            if (todos) this.report(todos, 'todo');
           }
           const act = describeToolUse(ws.root, block.name, input);
           this.step({ at: Date.now(), kind: act.kind, text: act.activity, ...(act.path ? { path: act.path } : {}) });
@@ -339,7 +390,12 @@ export class BuilderRun {
     }
     if (m.type === 'user') {
       this.onToolResults(m.message.content, m.tool_use_result);
-      if (!m.parent_tool_use_id) this.armThinking();
+      if (!m.parent_tool_use_id) {
+        for (const b of Array.isArray(m.message.content) ? (m.message.content as { type?: string; tool_use_id?: string }[]) : []) {
+          if (b?.type === 'tool_result' && b.tool_use_id) this.pendingTools.delete(b.tool_use_id);
+        }
+        this.armThinking();
+      }
       return;
     }
     if (m.type === 'result') {

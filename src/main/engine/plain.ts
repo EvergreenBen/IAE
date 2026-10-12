@@ -42,9 +42,16 @@ export function plainActivity(toolName: string, act: ToolActivity): string {
       return 'Planning';
     case 'mcp__iae__ask_architect':
       return 'Asking you something';
+    case 'mcp__iae__map_update':
+      return 'Updating the map';
+    case 'mcp__iae__file_notes':
+      return 'Noting what files are for';
     case 'Skill':
       return act.activity;
   }
+  // Someone else's MCP server: name the server ("Using linear"), not its tool.
+  const mcp = /^mcp__(.+?)__/.exec(toolName);
+  if (mcp) return `Using ${mcp[1].replace(/[-_]/g, ' ')}`;
   switch (act.kind) {
     case 'read':
     case 'search':
@@ -55,7 +62,8 @@ export function plainActivity(toolName: string, act: ToolActivity): string {
     case 'bash':
       return COMMANDS[act.activity] ?? (act.activity.startsWith('Running ') ? 'Running a check' : act.activity);
     default:
-      return act.activity;
+      // Claude Code's own housekeeping (ToolSearch, BashOutput, tasks…) says nothing to the person.
+      return 'Working on it';
   }
 }
 

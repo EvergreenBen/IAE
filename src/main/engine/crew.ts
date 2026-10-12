@@ -373,7 +373,11 @@ export class Crew {
       if (ended && now - ended > REMEMBER_MS) continue;
       const head = `${a.name} [${a.id}] (${a.role}, ${this.queue.includes(r) ? 'queued' : a.status})${a.nodeId ? ` on ${a.nodeId}` : ''} — "${a.task}"`;
       if (ended) lines.push(`${head}: ${clip(a.result ?? '', 160)}`);
-      else lines.push(`${head}${a.activity ? ` · ${a.activity}` : ''}${planLine(a, now)}`);
+      else {
+        // The lead gets the specific step ("Editing worker.ts"); the map shows the plain one.
+        const doing = r.steps.at(-1)?.text ?? a.activity;
+        lines.push(`${head}${doing ? ` · ${doing}` : ''}${planLine(a, now)}`);
+      }
     }
     return lines.slice(-8);
   }

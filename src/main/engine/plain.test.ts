@@ -26,6 +26,12 @@ describe('plainActivity', () => {
     expect(plain('mcp__iae__ask_architect', {})).toBe('Asking you something');
     expect(plain('WebSearch', { query: 'drizzle migrations' })).toBe('Looking things up');
   });
+
+  it('never shows an internal tool name', () => {
+    expect(plain('ToolSearch', { query: 'select:Foo' })).toBe('Working on it');
+    expect(plain('BashOutput', {})).toBe('Working on it');
+    expect(plain('mcp__linear__create_issue', {})).toBe('Using linear');
+  });
 });
 
 describe('streamedPath', () => {
