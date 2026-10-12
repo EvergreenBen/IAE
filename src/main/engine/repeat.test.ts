@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asksWhatsOpen, questionSentences, RepeatGuard, repeatsCard, similarity, withoutDropped } from './repeat';
+import { AskedQuestions, asksWhatsOpen, questionSentences, RepeatGuard, repeatsCard, similarity, unpromptedCap, withoutDropped } from './repeat';
 
 const card = { id: 'q1', prompt: 'Should members sign in with their gym membership number or a separate app account?', createdAt: 1_000 };
 const spoken = [{ text: 'Should members sign in with their membership number, or a separate account?', at: 2_000 }];
@@ -68,6 +68,34 @@ describe('RepeatGuard', () => {
 
   it('removes what it trimmed from the final text', () => {
     expect(withoutDropped("Route Board's in.  Still need: membership number or account? I'd go number.", [' Still need: membership number or account? ', "I'd go number."])).toBe("Route Board's in.");
+  });
+});
+
+describe('unprompted turns', () => {
+  const run = (text: string) => {
+    const g = new RepeatGuard(unpromptedCap(), true);
+    return (g.push(text) + g.flush()).trim();
+  };
+
+  it('say one sentence, and leave the tour of the map to the map', () => {
+    expect(
+      run('The map is finished now. It shows the website, the back end and the worker. The biggest gap is that failed jobs never retry. Next I would add retries. '),
+    ).toBe('The map is finished now.');
+  });
+
+  it('keep a question, or the default riding on one, and nothing after a dropped sentence', () => {
+    expect(run("Ada finished the health route. Want the jobs queue next? ")).toBe('Ada finished the health route. Want the jobs queue next?');
+    expect(run("Ada needs one answer before she migrates sessions: tokens or cookies? I'd go tokens. ")).toBe(
+      "Ada needs one answer before she migrates sessions: tokens or cookies? I'd go tokens.",
+    );
+    expect(run('Typecheck passes now. One call is yours: nothing is committed. I would leave it. Okay? ')).toBe('Typecheck passes now.');
+  });
+
+  it('applies to events and nudges, never to a reply to the person', () => {
+    const asked = new AskedQuestions();
+    expect(asked.guard('user', 'how does it work', [])).toBeNull();
+    const g = asked.guard('events', '', [])!;
+    expect((g.push('Kit is done. The search limit is 50 now. Tests pass. ') + g.flush()).trim()).toBe('Kit is done.');
   });
 });
 
