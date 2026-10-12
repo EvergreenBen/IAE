@@ -21,6 +21,23 @@ describe('normalizeOps', () => {
     expect(r.notes.some((n) => n.includes('normalised to "billing"'))).toBe(true);
   });
 
+  it('keeps a trimmed techLabel next to the plain label, and leaves it alone when omitted', () => {
+    const r = normalizeOps(
+      [
+        { op: 'upsertNode', node: { id: 'api', label: 'Serves the app', techLabel: '  Hono API  ' } },
+        { op: 'upsertNode', node: { id: 'web', techLabel: '   ' } },
+        { op: 'upsertNode', node: { id: 'docs', techLabel: 'x'.repeat(60) } },
+      ],
+      base,
+    );
+    expect(r.ops[0]).toMatchObject({ node: { id: 'api', label: 'Serves the app', techLabel: 'Hono API' } });
+    expect(r.ops[1]).toEqual({ op: 'upsertNode', node: { id: 'web' } });
+    expect((r.ops[2] as { node: { techLabel: string } }).node.techLabel).toHaveLength(40);
+    const m = applyOps(base, r.ops);
+    expect(applyOps(m, [{ op: 'upsertNode', node: { id: 'api', summary: 'Hono server' } }]).nodes.api.techLabel).toBe('Hono API');
+    expect(m.nodes.web.techLabel).toBeUndefined();
+  });
+
   it('places nodes with unknown parents at the top level and says so', () => {
     const r = normalizeOps([{ op: 'upsertNode', node: { id: 'cache', parentId: 'nope', kind: 'database' } }], base);
     expect(r.ops[0]).toMatchObject({ node: { id: 'cache', parentId: null, kind: 'data', label: 'Cache' } });

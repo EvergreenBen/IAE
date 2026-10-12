@@ -1,7 +1,8 @@
 // One architecture node on the map: a disc with a caption under it. Positioned
 // in world units by its layer; glides when the layout changes. The disc holds
 // the glyph, label and file count; the summary and child chips sit outside it,
-// where a circle has room for them.
+// where a circle has room for them. Hover or selection reveals the technical
+// name and stack above the summary.
 import { memo } from 'react';
 import { motion } from 'motion/react';
 import type { ArchNode } from '@shared/model';
@@ -10,6 +11,7 @@ import { KindGlyph, Mark } from './glyphs';
 import { CAPTION, type NodeBox } from './layout';
 import { mapLocal } from './mapStore';
 import s from './NodeCard.module.css';
+import { techLine } from './techLine';
 
 const EASE_IO = [0.65, 0, 0.35, 1] as const;
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
@@ -36,6 +38,7 @@ function NodeCardImpl({ node, box, chips, files, selected, buildHue, enterDelay,
   const building = status === 'building' || buildHue !== null;
   const childList = chips ? chips.split('\n') : [];
   const shown = fitChips(childList);
+  const tech = techLine(node);
   const initial =
     from != null
       ? { x: from.x, y: from.y, width: box.w, height: box.h, opacity: 0.6, scale: 1 }
@@ -103,6 +106,15 @@ function NodeCardImpl({ node, box, chips, files, selected, buildHue, enterDelay,
         {building && <span className={s.sheen} style={{ ['--hue' as string]: buildHue !== null ? `var(--agent-${buildHue % 6})` : 'var(--ink-3)' }} />}
       </div>
       <div className={s.caption}>
+        {tech && (
+          <div className={s.tech}>
+            <span className={s.techLine}>
+              {tech.name && <span className={s.techName}>{tech.name}</span>}
+              {tech.name && tech.stack.length > 0 && ' · '}
+              {tech.stack.join(' · ')}
+            </span>
+          </div>
+        )}
         {node.summary ? <div className={s.summary}>{node.summary}</div> : <div className={s.summaryEmpty}>{fallbackLine(node)}</div>}
         {box.container && childList.length > 0 && (
           <div className={s.chips}>

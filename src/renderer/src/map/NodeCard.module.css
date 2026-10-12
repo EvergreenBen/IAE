@@ -164,6 +164,45 @@
   color: var(--ink-3);
 }
 
+/* Detail on demand: the developer's name and stack open above the summary on
+   hover or selection. Collapsed, the row takes no room (the negative margin
+   cancels the caption gap), so a node at rest looks as it always did. */
+.tech {
+  display: grid;
+  grid-template-rows: 0fr;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  width: 100%;
+  margin-bottom: -4px;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--t-med) var(--ease-out),
+    margin-bottom var(--t-med) var(--ease-out),
+    opacity var(--t-med) var(--ease-out);
+}
+.disc:hover + .caption .tech,
+.disc[data-selected] + .caption .tech {
+  grid-template-rows: 1fr;
+  margin-bottom: 0;
+  opacity: 1;
+}
+
+.techLine {
+  min-height: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+.techName {
+  color: var(--ink-2);
+}
+
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -232,6 +271,9 @@
   .sheen {
     animation: none;
     background: color-mix(in srgb, var(--hue) 45%, transparent);
+  }
+  .tech {
+    transition: opacity var(--t-med) var(--ease-out);
   }
 }
 

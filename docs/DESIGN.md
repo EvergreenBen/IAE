@@ -8,7 +8,8 @@ rules hold for every surface.
 
 - **One surface.** A project is one full-bleed map. Everything else is a light
   layer that appears where it applies and leaves when it's done. There are no
-  panels, sidebars, tabs or file trees.
+  panels, sidebars, tabs or file trees. The one exception is the crew list (top
+  left), there only while agents work.
 - **Place over list.** A question about Auth sits on Auth. An agent editing the
   session code stands on Auth. A file lives inside the node that owns it. When
   you'd reach for a list, ask instead *where does this belong on the map?*
@@ -20,7 +21,7 @@ rules hold for every surface.
   "look at this", unless you've been steering in the last few seconds (then it
   only rings the node, if it's on screen). Nothing loops for attention: no
   pulsing orbs, spinners or shimmer.
-- **Calm colour.** A dark canvas, light ink, and one bright blue accent. The
+- **Calm colour.** A charcoal graph-paper canvas, light ink, and one bright blue accent. The
   accent means *the lead* or *this needs you*, so no node kind or agent is tinted
   with it. Agents get bright, distinguishable hues kept clear of the accent.
   Status is told by line style (dashed = planned) more than by colour.
@@ -40,8 +41,12 @@ Sans marks controls and labels.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ ●●●   Recipe Box / API / Auth                        (A)(K)    ⌘K   │ chrome: transparent, drag region
-│                                                                      │
+│ ●●●   Recipe Box / API / Auth                        (•Auto)  ⌘K     │ chrome: transparent, drag region
+│ ╭──────────────────────────────────╮                                 │
+│ │ (A) Ada  Session expiry  ~3 min  │                                 │ crew list, only while agents work
+│ │     Editing session.ts           │                                 │
+│ │     ━━━━━━━━━━━━━━──────────     │                                 │
+│ ╰──────────────────────────────────╯                                 │
 │                   ╭───╮            ╭───╮                             │
 │                  ( Pages )──────▶ (  Auth ) (A)                      │ nodes are discs
 │                   ╰───╯            ╰───╯                             │
@@ -59,9 +64,25 @@ Sans marks controls and labels.
 - **Chrome strip** (top, about 52px, no background, window drag region). On the
   left, after the traffic lights (start at x = 84px), is the breadcrumb: the
   project name in serif, then scopes split by thin `/`. Each crumb navigates up.
-  On the right is the **crew**: one small token per active agent (its hue and
-  initial). Hover shows its task. Click flies to where it's working. Then comes
-  a faint `⌘K`.
+  On the right: **Restart to load changes** (only when Arxitect is running from
+  source and its own main-process code changed), **Auto**, and a faint `⌘K`.
+- **Crew list** (top left, under the breadcrumb, only while agents work). One
+  row per agent: its mark, name and task; the line it's on now ("Editing
+  session.ts"); a 2px bar in its hue for how far through its own plan it is; and
+  at the right end, roughly how long is left ("~3 min left"), once a step has
+  finished and there's something to estimate from. Before that it shows the
+  step ("Step 1 of 4"), and with no plan, how long it has been going. A row
+  opens to show the plan, **Show** (fly to where it's working) and **Stop**.
+  Between the plan and the actions, an opened row lists what the builder
+  **Changed**, newest first: the file name in mono `--ink-2` (with its folder
+  only when two share a name), a quiet "new" for a file it created, and
+  `+added −removed` right-aligned, where only the numbers take `--ok` and
+  `--bad`. It lists up to eight, then "and N more". Each file opens the lens on
+  its Changes. Closed, the row says only how many files ("3 files", `--ink-4`)
+  at the right end of its activity line.
+  The bar creeps within a step but never passes the step's end until the
+  builder says it's done. Nothing in it loops or shimmers. A permission request
+  whose token is off screen hangs under the agent's row.
 - **Map**: the full window.
 - **Caption + intent line**: bottom centre, about 24px from the bottom edge.
 
@@ -118,6 +139,11 @@ whole map. Keep it stable by seeding ELK with prior positions (or
   solid. *Broken* has a `--bad` rim and a small mark at 4 o'clock.
 - Hover: scale 1.025, `--shadow-2`. Selected: an `--accent` rim with a soft glow.
   Selecting a node scopes the conversation ("About Auth…").
+- **Plain English first, technical detail on demand.** Labels name the role
+  ("Window ↔ Brain Link"); on hover or selection a muted mono line opens above
+  the summary with the developer's name (`techLabel`, `--ink-2`) and as many
+  whole stack items as fit, up to three (`--ink-3`): "IPC Bridge · Electron IPC".
+  Nodes without either look exactly as before.
 - **Activity bloom**: when an agent touches a file under a node, the visible
   ancestor gets one soft ring in the agent's hue that expands and fades
   (~900ms). It's rate-limited and never loops.
@@ -153,7 +179,7 @@ top-right corner of the node it's working in (lifted to the visible ancestor).
 When zoomed in enough, a one-line activity shows beneath the node in
 `--ink-2`, for example "Editing session.ts". When the agent changes node, the
 token **glides** along a gentle curve (spring). Several agents on one node line
-up side by side. Hovering a token (on the map or in the chrome) opens a small
+up side by side. Hovering a token on the map opens a small
 card with its task, what it's doing now, and a quiet "Stop". A permission request shows as a small pill attached to the
 token, such as "Run `npm test`?", with ✓ and ✕.
 
@@ -249,6 +275,17 @@ Click a file and a sheet rises from the bottom over a lightly dimmed map
   is the canonical "I need to change my .env" moment, so make it lovely.
 - **Meaning**: a plain-language explanation of what the file does and what uses
   it.
+- **Changes** (a third option in the toggle, `Code · Changes · Meaning`, shown
+  when the file differs from the last commit or the crew list asked for it):
+  the file's diff against git `HEAD`, read-only, on the same CodeMirror paper
+  and syntax colours as Code. Added lines sit on `--ok-wash` and removed lines
+  on `--bad-wash`, across the gutter too. The gutter holds the old and new line
+  numbers (`--ink-4`, mono 11px) and a small `+`/`−` in `--ok`/`--bad`. Hidden
+  lines between hunks are a quiet recessed band ("Line 40" in `--ink-3`, then
+  the enclosing function in `--ink-4`), with no band above line 1. One line
+  over the diff tallies it ("+24 −6 since the last commit"). A file with no
+  changes, a binary file or a project without git get a calm serif line, never
+  an error. `.env` files have no Changes view, so secrets stay masked.
 - Footer: "Ask Archie to change this…". It sends with the file as context.
 - Esc closes it, and the camera is left where it was.
 

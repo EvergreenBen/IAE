@@ -10,9 +10,9 @@ changing.
 
 Two ideas run through everything below:
 
-- **The map is the interface.** No panels, sidebars or file trees. Files live
-  *inside* the node that owns them. To find `.env` you open API, then Config,
-  and it's there.
+- **The map is the interface.** No panels, sidebars or file trees (only a
+  quiet crew list while agents work). Files live *inside* the node that owns
+  them. To find `.env` you open API, then Config, and it's there.
 - **Nobody waits.** While builders work, Archie uses the time to settle the
   next real decision. While you talk, the map sketches what you're saying.
 
@@ -29,17 +29,16 @@ You need Claude Code installed and signed in. **If `claude` works in your
 terminal, Arxitect works** — it uses the same login. `ANTHROPIC_API_KEY` is honoured
 if you've set one.
 
-Two optional extras, both worth it if you intend to talk rather than type:
+One optional extra, worth it if you intend to talk rather than type:
 
 ```bash
-npm run voice:setup    # ~270MB: on-device speech-to-text, works offline
+npm run voice:setup    # ~700MB: speech-to-text and Archie's voice, on-device and offline
 ```
 
-For a markedly better voice for Archie, install a premium system voice:
-**System Settings → Accessibility → Spoken Content → System voice → Manage
-voices → English → Ava (Premium)** or **Zoe (Premium)**. Arxitect finds and prefers
-it automatically — it ranks Premium above Enhanced above Siri above stock, and
-never picks the novelty voices.
+Archie's voice is Kokoro, a speech model that runs on your Mac (on the GPU when
+it can). Without `voice:setup` it downloads the first time Archie speaks, and the
+system voice fills in until it's ready. It also fills in for a reply that starts
+in the few seconds before Kokoro has loaded.
 
 Other commands you may want:
 
@@ -55,7 +54,9 @@ Other commands you may want:
 
 ## 2. Starting a project
 
-The Home screen offers two doors, and remembers where you've been.
+The Home screen offers two doors, and remembers where you've been. If a
+project was open when you quit, Arxitect opens straight back into it, and any
+builder that hadn't finished picks up where it left off.
 
 - **New project** (`⌘N`) — name it, and Arxitect creates the folder and opens a
   blank canvas. Archie greets you and asks what you're building.
@@ -72,7 +73,7 @@ genuine gaps on its own.
 
 Everything Arxitect knows about your project lives in `<project>/.iae/` —
 `map.json`, `agenda.json`, `decisions.json`, `transcript.jsonl`, `state.json`,
-`notes.json`. It's plain JSON, it's yours, and it's git-ignorable.
+`notes.json`, `crew.json`. It's plain JSON, it's yours, and it's git-ignorable.
 
 ---
 
@@ -89,8 +90,12 @@ question is waiting.
 - **Hold `Space`** and talk (push-to-talk). Release to send. Outside a text
   field it starts instantly; inside the intent line it waits 200ms and only
   when the line is empty, so typing spaces never triggers it.
-- **Hands-free** — turn it on and just talk. Arxitect listens continuously and works
-  out your turns by itself.
+- **Hands-free** — click the mic once and just talk, for as long as you like.
+  Arxitect listens continuously and works out your turns by itself: about half
+  a second of silence after something that sounds finished ends your turn, and
+  it waits longer when you trail off on *"and…"* or *"so…"*. Your words are
+  already transcribed by the time your turn ends, so Archie usually starts
+  answering within about two seconds.
 
 ### What's worth saying
 
@@ -117,10 +122,16 @@ understood.
 
 ### Interrupting
 
-`⌘.` stops Archie mid-sentence and interrupts the reply in flight. Holding
-`Space` does the same the moment you start talking. If Archie is still thinking
-when you cut in, the reply that was on its way stays silent rather than talking
-over you.
+Just talk over him. In hands-free, Archie dips the moment you start, and stops
+once it's clear you're talking — a cough or a door doesn't cut him off, and his
+own voice coming back through your speakers never counts as you. `⌘.` stops
+him mid-sentence and interrupts the reply in flight; holding `Space` does the
+same the moment you start talking. If Archie is still thinking when you cut
+in, the reply that was on its way stays silent rather than talking over you.
+
+(With the system voice instead of Kokoro, talking over him needs `Space` or
+`⌘.`: that voice plays outside the app, where its echo can't be told apart from
+you.)
 
 ---
 
@@ -130,7 +141,8 @@ over you.
 
 A node is a **disc**. Inside: a kind glyph, the label, and the file count.
 Underneath, in a caption: what it does, and for a node with children, its
-children's names.
+children's names. Labels are plain English; hover or select a node to see the
+name a developer would use and its tech stack.
 
 | What you see | What it means |
 |---|---|
@@ -195,17 +207,35 @@ one-line description of what it's doing right now.
 Builders are **real Claude Code sessions**. They load your `CLAUDE.md`, your
 skills, plugins, hooks, MCP servers and permissions. Nothing is simulated.
 
-- **Hover a builder** for its task, its current activity, and a quiet **Stop**.
-- **Click one** to fly to where it's working.
+- **The crew list** (top left) has a row for each agent at work: what it's
+  doing this moment, a bar for how far through its plan it is, and roughly how
+  long it has left. Each builder sends its own plan once it has looked around,
+  and the estimate comes from how long its finished steps took. **Click a row**
+  for the plan, **Show** (fly to where it's working) and **Stop**.
+- **See what it changed.** A row counts the files its builder has edited
+  ("3 files"); opened, it lists them under **Changed**, newest first, each with
+  the lines added and removed (**+24 −6**, marked **new** if the builder created
+  the file). Click one and the lens opens on that file's **Changes**: what's
+  different since the last commit, added lines in green, removed in red, with
+  the old and new line numbers. **Code** goes back to the plain file, which
+  you can edit. The counts are taken from each edit as it lands; the lens shows
+  the file against git, so it also includes changes from before the job. A
+  builder that changed files stays on the list when it's done, so you can
+  review it; **Clear** takes it off (the oldest go by themselves after four).
+- **Hover a builder on the map** for its task, its current activity, and a
+  quiet **Stop**.
 - A builder that needs permission shows a **pill on the map** with the actual
   command. **✓** allows, **✗** denies. It appears where the work is happening,
   not in a queue somewhere.
 - When a file under a node changes, that node gets one soft ring in the
   builder's colour. It never loops or nags.
 - Run several at once — up to 8, 3 by default.
+- **Builders don't lose their place.** A window reload doesn't touch them, and
+  if the app quits mid-job they resume their own Claude Code session the next
+  time the project opens.
 
-While they work, Archie keeps talking to you. That's the point: you are never
-sitting watching a progress bar.
+While they work, Archie keeps talking to you, and knows how far along each one
+is. The bar is there to glance at, not to watch.
 
 ---
 
@@ -223,6 +253,11 @@ camera exactly where it was.
 
 - **Code / Meaning** — switch between the file and a plain-language explanation
   of what it's for.
+- **Changes** — appears when the file differs from the last commit (git
+  `HEAD`): every changed passage with three lines of context around it, added
+  lines in green and removed in red. A file git doesn't track yet shows as all
+  new. `⌘F` finds within it. It follows along while a builder edits the file.
+  `.env` files never show it, so their values stay masked.
 - **The owner chip** in the header jumps to the node that owns this file.
 - **Ask bar at the bottom** — ask Archie to change this file without leaving
   it. The request carries the path as context, and the reply streams in above
@@ -291,24 +326,30 @@ Each change saves on its own.
 | **Lead's name** | Archie by default. Call it whatever you like. |
 | **Lead model** | Tuned to answer in about a second. |
 | **Builder model** | Does the real work in each Claude Code session. |
-| **Autonomy** | See below. |
+| **Builders ask** | See below. |
 | **Builders at once** | 1–8, default 3. |
 
-### Autonomy — the setting that changes how Arxitect feels
+### Builders ask — the setting that changes how Arxitect feels
 
-| Mode | |
+| Choice | |
 |---|---|
 | **Ask first** | Builders ask before they change a file or run a command. |
-| **Edit files freely** *(default)* | Builders change files on their own, and ask before running a command. |
-| **Full autonomy** | Builders never stop to ask. Best on a branch you can throw away. |
+| **Ask before commands** *(default)* | Builders change files on their own, and ask before running a command. |
+| **Never ask (Auto)** | Builders go ahead without stopping. Best in a git repo, where every change can be undone. |
 
-If you find yourself approving the same pill over and over, this is the knob —
-Archie can't approve on your behalf, and will tell you so.
+If you find yourself approving the same pill over and over, this is the knob.
+**Auto** at the top right is the same "never ask", one click away: turning it on
+also approves everything already waiting.
 
 ### Voice settings
 
-Toggle **Speak replies** and **Hands-free voice** from `⌘K` directly. Speech
-rate and the preferred system voice are stored too.
+Toggle **Speak replies** and **Hands-free voice** from `⌘K` directly. Pick
+Archie's voice in **Settings → Voice**: step through the Kokoro voices (Heart is
+the default) and each one speaks as you land on it. The last stop, **System
+voice**, uses the best voice macOS has installed instead — Premium above
+Enhanced above Siri above stock, never the novelty voices — so a premium voice
+from **System Settings → Accessibility → Spoken Content → System voice → Manage
+voices** is used when you choose it.
 
 A note on hands-free: while Archie is speaking, the microphone is deliberately
 shut, because your speakers would otherwise feed his own voice back into it.
@@ -346,7 +387,7 @@ On Windows and Linux, `Ctrl` stands in for `⌘`.
 - **Open an existing repo and let Atlas finish before you ask anything.** The
   first minute is the cheapest architecture review you'll get.
 - **Talk, don't type.** The ghost nodes only sketch while you speak, and the
-  whole turn-taking design assumes voice. Install a premium voice first.
+  whole turn-taking design assumes voice. Run `npm run voice:setup` first.
 - **Answer the card and move on.** Archie's questions always carry a
   recommended default — taking it is usually right, and you can revisit.
 - **Delegate early and keep talking.** The design assumes a builder is running
@@ -356,5 +397,16 @@ On Windows and Linux, `Ctrl` stands in for `⌘`.
   fastest orientation available.
 - **Let the map be your file tree.** Looking for something? Find the node that
   owns it and dive. It's faster than searching, and you learn the system.
-- **Turn autonomy up on a throwaway branch.** Full autonomy with 3+ builders is
-  a different experience, and safe when the branch is disposable.
+- **Turn on Auto in a git repo.** Builders that never wait, three or more at
+  once, while you keep talking, is a different experience; git keeps every
+  change undoable, and the crew list shows what each one changed.
+
+### Building Arxitect with Arxitect
+
+Run it from source with `npm run dev` and open the Arxitect repo itself.
+Builders' changes to the window (the renderer) load as they're saved; the
+window reloads and the crew carries on. Changes to the engine (`src/main`,
+`src/preload`, `src/shared`) only load in a fresh process, so a **Restart to
+load changes** button appears at the top right. Click it when you like:
+Arxitect rebuilds, comes back on the same project, and every unfinished
+builder resumes its session.
