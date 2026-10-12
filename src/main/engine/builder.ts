@@ -1,23 +1,23 @@
 // One crew job: a full Claude Code session (builder or scout). Its message
 // stream becomes what the map shows: steps, file touches, a live activity
-// line in plain words (plain.ts), and the node it's standing on. The stream
-// is read as it arrives, so the figure moves to the part being changed while
-// the change is still being written, and a long think reads as thinking.
+// line in plain words (plain.ts), and the node it's standing on, read as the
+// stream arrives (whereabouts.ts).
 
 import { query, type CanUseTool, type PermissionResult, type PermissionUpdate, type Query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { EngineEvent } from '../../shared/events';
-import { ancestorsOf, describeMap, ownerOf } from '../../shared/map';
+import { describeMap } from '../../shared/map';
 import type { AgendaItem, AgentInfo, AgentStep, Autonomy, Settings } from '../../shared/model';
-import { describeToolUse, projectPath, stepText } from './activity';
+import { describeToolUse, stepText } from './activity';
 import { ChangeTracker } from './changes';
 import { RESTARTED } from './crew-persist';
 import { createCrewTools, crewToolNames } from './crew-tools';
 import { gateHooks } from './gate';
-import { plainActivity, streamedPath, THINKING, WRITERS } from './plain';
+import { plainActivity } from './plain';
 import { nextProgress, todoReport, type ProgressReport } from './progress';
 import { builderAppend } from './prompts';
 import { baseOptions, errorText, InputQueue, log } from './sdk';
 import type { Workspace } from './workspace';
+import { Whereabouts, type StreamEvent } from './whereabouts';
 
 export type JobKind = 'build' | 'investigate' | 'command';
 
@@ -55,17 +55,6 @@ const READ_ONLY_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebS
 const SCOUT_TOOLS = ['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch'];
 /** Steps kept per run, for a window that reloads mid-job. */
 const KEEP_STEPS = 30;
-/** Results back and nothing new for this long: it's thinking (quick steps don't flicker the line). */
-const THINK_AFTER_MS = 5_000;
-
-/** The parts of a streamed message event this reads. */
-interface StreamEvent {
-  type: string;
-  index?: number;
-  content_block?: { type: string; name?: string };
-  delta?: { type: string; partial_json?: string };
-}
-
 /** The plan it shows: its own plain-words plan (progress tool) wins over Claude Code's todo list. */
 type PlanSource = 'progress' | 'todo';
 
@@ -93,18 +82,9 @@ export class BuilderRun {
   private workStartedAt = Date.now();
   /** What it changed, file by file (AgentInfo.changes). */
   private readonly changes: ChangeTracker;
-  private thinkTimer: ReturnType<typeof setTimeout> | undefined;
-  /** A writing tool whose input is streaming in, until it names its file. */
-  private writing: { index: number; json: string } | null = null;
-  /** Top-level tool calls not yet answered, and a tool call still streaming in: it isn't thinking while either is. */
-  private readonly pendingTools = new Set<string>();
-  private streamingTool: number | null = null;
-  /** The last file it touched (tool calls without one don't clear it), and the node it stood on with that node's ancestors. */
-  private lastFile: string | null = null;
-  private lineage: string[] = [];
-  /** Its node went away and no other could be found: the next map change tries again. */
-  private lost = false;
   private planFrom: PlanSource | null = null;
+  /** Where it stands and whether it's thinking (whereabouts.ts). */
+  private readonly where: Whereabouts;
 
   constructor(
     readonly job: JobSpec,
@@ -113,7 +93,14 @@ export class BuilderRun {
   ) {
     this.agent = agent;
     this.changes = new ChangeTracker(d.ws.root);
-    this.trace(agent.nodeId);
+    this.where = new Whereabouts({
+      root: d.ws.root,
+      map: () => d.ws.map,
+      agent: () => this.agent,
+      jobNode: job.nodeId,
+      update: (patch) => this.update(patch),
+      finished: () => this.finished,
+    });
     // A job resumed after a restart carries on counting from what it had changed.
     if (agent.changes?.length) this.changes.changes = [...agent.changes];
   }
@@ -127,19 +114,9 @@ export class BuilderRun {
   }
 
   update(patch: Partial<AgentInfo>): void {
-    if (patch.file) this.lastFile = patch.file;
-    if (patch.nodeId !== undefined && patch.nodeId !== this.agent.nodeId) {
-      this.lost = false;
-      this.trace(patch.nodeId);
-    }
+    this.where.noting(patch);
     this.agent = { ...this.agent, ...patch };
     this.d.onUpdate(this.agent);
-  }
-
-  /** Remember the node it stands on and that node's ancestors, nearest first, for when the map is regrouped. */
-  private trace(nodeId: string | null): void {
-    const map = this.d.ws.map;
-    if (nodeId && map.nodes[nodeId]) this.lineage = [nodeId, ...ancestorsOf(map, nodeId).map((n) => n.id).reverse()];
   }
 
   start(): void {
@@ -178,9 +155,7 @@ export class BuilderRun {
     const ownTools = crewToolNames({ canAsk: true, canNote: !this.isScout, canProgress: !this.isScout });
     this.resuming = !!this.sessionId;
     this.workStartedAt = Date.now();
-    this.pendingTools.clear();
-    this.streamingTool = null;
-    this.trace(this.agent.nodeId);
+    this.where.reset();
 
     this.q = query({
       prompt: this.input,
@@ -221,75 +196,9 @@ export class BuilderRun {
     return this.d.askPermission(this, { toolName, input, title: opts.title, suggestions: opts.suggestions, signal: opts.signal });
   };
 
-  /**
-   * Where to stand: the node that owns the file in hand, else where it already
-   * is (while that's still on the map), else the owner of the last file it
-   * touched, else the nearest part of where it stood that's still there, else
-   * its job's node.
-   */
-  private home(path?: string | null): string | null {
-    const map = this.d.ws.map;
-    const owner = path ? ownerOf(map, path) : null;
-    if (owner) return owner;
-    if (this.agent.nodeId && map.nodes[this.agent.nodeId]) return this.agent.nodeId;
-    const last = this.lastFile ? ownerOf(map, this.lastFile) : null;
-    if (last) return last;
-    const kept = this.lineage.find((id) => map.nodes[id]);
-    if (kept) return kept;
-    return this.job.nodeId && map.nodes[this.job.nodeId] ? this.job.nodeId : null;
-  }
-
   /** The map changed under it (the cartographer regrouped things): if its node is gone, it stands somewhere real. */
   rehome(): void {
-    if (this.finished) return;
-    const id = this.agent.nodeId;
-    if (id ? this.d.ws.map.nodes[id] : !this.lost) return;
-    const next = this.home();
-    if (next === id) return;
-    this.update({ nodeId: next });
-    this.lost = next === null;
-  }
-
-  /** Nothing in flight and nothing streaming: after a few quiet seconds it reads as thinking. */
-  private armThinking(): void {
-    clearTimeout(this.thinkTimer);
-    if (this.pendingTools.size || this.streamingTool !== null) return;
-    this.thinkTimer = setTimeout(() => {
-      if (!this.finished && this.agent.status === 'working' && !this.pendingTools.size && this.streamingTool === null) this.update({ status: 'thinking', activity: THINKING });
-    }, THINK_AFTER_MS);
-  }
-
-  /** A tool call as it streams in: a write moves the figure to its part of the map as soon as it names the file. */
-  private onStream(ev: StreamEvent): void {
-    if (ev.type === 'content_block_stop' && ev.index === this.streamingTool) {
-      this.streamingTool = null;
-      return;
-    }
-    if (ev.type === 'content_block_start' && ev.content_block?.type !== 'tool_use') {
-      // It's thinking or talking: that counts as thinking once it has gone on a while.
-      this.armThinking();
-      return;
-    }
-    if (ev.type === 'content_block_start' && ev.content_block?.type === 'tool_use') {
-      clearTimeout(this.thinkTimer);
-      this.streamingTool = ev.index ?? 0;
-      const writes = WRITERS.has(ev.content_block.name ?? '');
-      this.writing = writes ? { index: ev.index ?? 0, json: '' } : null;
-      if (writes && this.agent.status !== 'waiting') this.update({ status: 'working', activity: 'Making changes' });
-      return;
-    }
-    const w = this.writing;
-    if (!w || ev.type !== 'content_block_delta' || ev.index !== w.index || ev.delta?.type !== 'input_json_delta') return;
-    w.json += ev.delta.partial_json ?? '';
-    const raw = streamedPath(w.json);
-    if (raw === null) {
-      // The path comes first; past this, it isn't coming.
-      if (w.json.length > 2000) this.writing = null;
-      return;
-    }
-    this.writing = null;
-    const path = projectPath(this.d.ws.root, raw);
-    if (path && this.agent.status !== 'waiting') this.update({ nodeId: this.home(path), file: path });
+    this.where.rehome();
   }
 
   /** The builder said where it is in its plan. Its own plain plan, once sent, isn't replaced by its todo list. */
@@ -355,7 +264,7 @@ export class BuilderRun {
       return;
     }
     if (m.type === 'stream_event') {
-      if (!m.parent_tool_use_id) this.onStream(m.event as StreamEvent);
+      if (!m.parent_tool_use_id) this.where.stream(m.event as StreamEvent);
       return;
     }
     if (m.type === 'assistant') {
@@ -365,12 +274,7 @@ export class BuilderRun {
           this.lastText = block.text.trim();
           this.step({ at: Date.now(), kind: 'text', text: stepText(block.text) });
         } else if (block.type === 'tool_use' && block.name) {
-          if (!m.parent_tool_use_id) {
-            clearTimeout(this.thinkTimer);
-            this.writing = null;
-            this.streamingTool = null;
-            if (block.id) this.pendingTools.add(block.id);
-          }
+          if (!m.parent_tool_use_id) this.where.called(block.id);
           const input = (block.input && typeof block.input === 'object' ? block.input : {}) as Record<string, unknown>;
           // Bookkeeping, not work: it moves the bar, not the activity line.
           if (block.name === 'mcp__iae__progress') continue;
@@ -383,19 +287,14 @@ export class BuilderRun {
           if (act.path && act.touch) emit({ type: 'files/touched', path: act.path, agentId: this.agent.id, action: act.touch });
           if (act.path && act.touch === 'create') this.created.add(act.path);
           if (act.path && block.id) this.changes.begin(block.id, block.name, act.path, input, act.touch === 'create');
-          if (this.agent.status !== 'waiting') this.update({ status: 'working', activity: plainActivity(block.name, act), file: act.path, nodeId: this.home(act.path) });
+          if (this.agent.status !== 'waiting') this.update({ status: 'working', activity: plainActivity(block.name, act), file: act.path, nodeId: this.where.home(act.path) });
         }
       }
       return;
     }
     if (m.type === 'user') {
       this.onToolResults(m.message.content, m.tool_use_result);
-      if (!m.parent_tool_use_id) {
-        for (const b of Array.isArray(m.message.content) ? (m.message.content as { type?: string; tool_use_id?: string }[]) : []) {
-          if (b?.type === 'tool_result' && b.tool_use_id) this.pendingTools.delete(b.tool_use_id);
-        }
-        this.armThinking();
-      }
+      if (!m.parent_tool_use_id) this.where.answered(m.message.content);
       return;
     }
     if (m.type === 'result') {
@@ -447,7 +346,7 @@ export class BuilderRun {
     if (this.finished) return;
     // A finished session exits on its own once its input closes (so the person's hooks still run).
     this.finished = true;
-    clearTimeout(this.thinkTimer);
+    this.where.stop();
     this.input.close();
     if (this.buildingNode) this.d.ws.endBuild(this.buildingNode, outcome.status);
     this.buildingNode = null;
