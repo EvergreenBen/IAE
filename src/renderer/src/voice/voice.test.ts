@@ -211,8 +211,35 @@ describe('SentenceChunker', () => {
   });
   it('splits a long clause at a comma', () => {
     const c = new SentenceChunker(60);
+    c.push('Done. ');
     const out = c.push('Ada is reworking session expiry in Auth while Kit finishes cook mode, and Rho is reviewing the webhook handler ');
     expect(out).toEqual(['Ada is reworking session expiry in Auth while Kit finishes cook mode,']);
+  });
+
+  it('opens on the first natural phrase, not a whole long sentence', () => {
+    const c = new SentenceChunker(120, 48);
+    const said: string[] = [];
+    for (const w of 'The jobs worker checks a jobs table in Postgres every two seconds. It claims the oldest job.'.split(/(\s+)/)) said.push(...c.push(w));
+    said.push(...c.flush());
+    expect(said).toEqual(['The jobs worker checks a jobs table', 'in Postgres every two seconds.', 'It claims the oldest job.']);
+    // A comma far past the limit doesn't make the opening long: it breaks at a breath within it.
+    c.reset();
+    expect(c.push('On the website, createRecipe in the API client sends the title, servings, and steps. ')[0]).toBe('On the website, createRecipe');
+    // Too short to stand alone ("On the website,"), so it isn't cut there.
+    c.reset();
+    expect(c.push('Yes. ')).toEqual(['Yes.']);
+  });
+
+  it('keeps the second chunk short enough to be ready when the opening ends', () => {
+    const c = new SentenceChunker(120, 48);
+    const said = c.push(
+      'Saving a recipe starts in the website. The API client posts the title, the servings and every ingredient line to the recipes route, which checks your session first. ',
+    );
+    expect(said[0]).toBe('Saving a recipe starts in the website.');
+    expect(said[1].length).toBeLessThanOrEqual(96);
+    expect(said.join(' ')).toBe(
+      'Saving a recipe starts in the website. The API client posts the title, the servings and every ingredient line to the recipes route, which checks your session first.',
+    );
   });
 
   it('keeps a reply\'s first chunk short, so the voice starts sooner', () => {

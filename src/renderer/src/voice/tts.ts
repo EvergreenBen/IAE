@@ -18,6 +18,7 @@ import { kokoro } from './kokoro';
 import { DEFAULT_KOKORO_VOICE, voiceChoice, type VoiceChoice } from './kokoroConfig';
 import { SystemVoice, type Sink } from './systemVoice';
 import { SentenceChunker, speakable } from './text';
+import { turnTrace } from './trace';
 
 export interface SpeakOptions {
   enabled: boolean;
@@ -285,10 +286,12 @@ export class Speaker {
         this.settle();
       },
     };
+    turnTrace.mark('chunk');
     if (this.engine === 'kokoro') {
       // Clips come back in the order asked for, so they play in order too.
       void kokoro.synth(line.text, kokoroVoice(line.choice), line.rate).then((clip) => {
         if (gen !== this.gen) return;
+        turnTrace.mark('clip');
         if (clip) this.player.play(clip, sink);
         else sink.end();
       });

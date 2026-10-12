@@ -7,15 +7,27 @@
 
 const ABBREVIATIONS = /(?:^|\s)(?:e\.g|i\.e|etc|vs|mr|mrs|ms|dr|st|no|approx|incl)\.$/i;
 
+/**
+ * Where a speaker would take a breath in a sentence with no comma: before a
+ * joining word or a preposition ("The jobs worker checks a jobs table | in
+ * Postgres every two seconds.").
+ */
+const BREATH = /\s(?=(?:and|but|so|which|that|because|while|when|where|then|with|after|before|until|unless|since|though|in|on|at|from|into|about|through|across|between|using|via|without|every|instead)\s)/g;
+/** The opening is never shorter than this (about four words): enough sound to cover making the next chunk. */
+const MIN_OPENING = 20;
+
 export class SentenceChunker {
   private buf = '';
-  private first = true;
+  /** Chunks given out since the reply began. */
+  private count = 0;
 
   constructor(
     /** A clause longer than this is spoken at its last comma/semicolon/dash. */
     private readonly longClause = 120,
     /** The same for a reply's first chunk: kept short, so the voice starts sooner. */
     private readonly firstClause = longClause,
+    /** And for the second, which is made while the first plays: short enough to be ready when it ends. */
+    private readonly secondClause = Math.min(longClause, Math.max(firstClause * 2, 80)),
   ) {}
 
   push(delta: string): string[] {
@@ -28,7 +40,7 @@ export class SentenceChunker {
       this.buf = this.buf.slice(cut);
       if (chunk) {
         out.push(chunk);
-        this.first = false;
+        this.count++;
       }
     }
     return out;
@@ -42,7 +54,7 @@ export class SentenceChunker {
 
   reset(): void {
     this.buf = '';
-    this.first = true;
+    this.count = 0;
   }
 
   /**
@@ -55,32 +67,37 @@ export class SentenceChunker {
     const t = this.buf.trim();
     if (!/[.!?…]["')\]”’]*$/.test(t) || /\d\.$/.test(t) || ABBREVIATIONS.test(t)) return null;
     this.buf = '';
-    this.first = false;
+    this.count++;
     return t;
   }
 
   private findCut(): number {
     const end = this.sentenceEnd();
-    const limit = this.first ? this.firstClause : this.longClause;
+    const limit = this.count === 0 ? this.firstClause : this.count === 1 ? this.secondClause : this.longClause;
     if (end >= 0 && end <= limit) return end;
-    // A long sentence (finished or still arriving) is spoken a clause at a time.
-    if (this.buf.length > limit) {
-      const window = this.buf.slice(0, end >= 0 ? Math.min(end, limit + 40) : limit + 40);
-      const re = /[,;:—–]\s/g;
-      const minAt = Math.min(40, limit / 3);
-      let last = -1;
-      for (let m = re.exec(window); m; m = re.exec(window)) if (m.index > minAt) last = m.index + 1;
-      if (last > 0) return last;
-      // No comma in a long opening: break before a joining word, where a speaker would breathe
-      // ("The jobs worker makes thumbnails | and sends the digest emails.").
-      if (this.first) {
-        const join = /\s(?=(?:and|but|so|which|because|while|when|where|then|with|after|before|until|unless|since|though)\s)/g;
-        let at = -1;
-        for (let m = join.exec(window); m; m = join.exec(window)) if (m.index >= 20 && m.index <= limit) at = m.index;
-        if (at > 0) return at;
-      }
+    if (this.buf.length <= limit) return end;
+    // A reply's opening is cut at a natural break within the limit, so the voice starts sooner.
+    if (this.count === 0) {
+      const cut = this.openingCut(limit);
+      if (cut > 0) return cut;
     }
-    return end;
+    // A long sentence (finished or still arriving) is spoken a clause at a time.
+    const window = this.buf.slice(0, end >= 0 ? Math.min(end, limit + 40) : limit + 40);
+    const re = /[,;:—–]\s/g;
+    const minAt = Math.min(40, limit / 3);
+    let last = -1;
+    for (let m = re.exec(window); m; m = re.exec(window)) if (m.index > minAt) last = m.index + 1;
+    return last > 0 ? last : end;
+  }
+
+  /** The longest natural phrase within `limit`: up to a comma, else up to a breath. -1 when there is none. */
+  private openingCut(limit: number): number {
+    const head = this.buf.slice(0, limit + 1);
+    let cut = -1;
+    for (const m of head.matchAll(/[,;:—–](?=\s)/g)) if (m.index + 1 >= MIN_OPENING && m.index + 1 <= limit) cut = m.index + 1;
+    if (cut > 0) return cut;
+    for (const m of head.matchAll(BREATH)) if (m.index >= MIN_OPENING && m.index <= limit) cut = m.index;
+    return cut;
   }
 
   private sentenceEnd(): number {
