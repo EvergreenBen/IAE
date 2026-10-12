@@ -37,6 +37,15 @@ export function tokens(text: string): Token[] {
   return out;
 }
 
+/** Where the reply's first `words` words end (the whole text once they're all said). */
+export function wordsEnd(text: string, words: number): number {
+  if (words <= 0) return 0;
+  const re = /\S+/g;
+  let n = 0;
+  for (let m = re.exec(text); m; m = re.exec(text)) if (++n === words) return m.index + m[0].length;
+  return text.length;
+}
+
 /** Long enough to read calmly: about 4 words a second, between 6 and 12 seconds. */
 export function lingerMs(text: string): number {
   const words = text.trim().split(/\s+/).filter(Boolean).length;

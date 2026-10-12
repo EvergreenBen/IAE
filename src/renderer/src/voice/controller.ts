@@ -380,6 +380,8 @@ class VoiceController {
     this.utter = { id: ++this.seq, frames: this.ring.slice(-back), via, overLead, confirmed: !overLead, early: null };
     if (overLead) tts.duck(true);
     else this.bargeIn();
+    // They're talking again: their last words make way for these.
+    ui.voice({ heard: undefined });
     this.hooks.onStart();
     clearInterval(this.interimTimer);
     this.interimTimer = setInterval(() => this.interim(), INTERIM_EVERY_MS);

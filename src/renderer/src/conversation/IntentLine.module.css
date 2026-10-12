@@ -75,6 +75,17 @@
   pointer-events: none;
   mask-image: linear-gradient(to right, transparent 0, black 18px);
 }
+/* What they just said, settled while Archie answers: quieter, and it ends with an ellipsis rather than scrolling. */
+.interim[data-heard] {
+  color: var(--ink-3);
+  mask-image: none;
+}
+.interim[data-heard] span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .interim span {
   flex: none;
   padding-left: 1px;

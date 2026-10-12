@@ -16,6 +16,8 @@ import type { Settings } from '@shared/model';
 import { ClipPlayer } from './clipPlayer';
 import { kokoro } from './kokoro';
 import { DEFAULT_KOKORO_VOICE, voiceChoice, type VoiceChoice } from './kokoroConfig';
+import type { Said } from '../state/store';
+import { SaidTracker, wordCount } from './said';
 import { SystemVoice, type Sink } from './systemVoice';
 import { SentenceChunker, speakable } from './text';
 import { turnTrace } from './trace';
@@ -43,6 +45,8 @@ interface Line {
   text: string;
   choice: VoiceChoice;
   rate: number;
+  /** The reply it belongs to (null for a voice sample). */
+  turnId: string | null;
 }
 
 const kokoroVoice = (c: VoiceChoice) => (c.engine === 'kokoro' ? c.voice : DEFAULT_KOKORO_VOICE);
@@ -70,6 +74,9 @@ export class Speaker {
   onSpeaking: (speaking: boolean) => void = () => {};
   /** Called when a reply's voice gets under way, and once all of it has been said (or cut off). */
   onActive: (active: boolean) => void = () => {};
+  /** Called as the voice gets through a reply, so the caption can keep pace. */
+  onSaid: (said: Said | null) => void = () => {};
+  private said = new SaidTracker((s) => this.onSaid(s));
   private active = false;
   /** The turn whose sentences are being spoken and whose end hasn't arrived yet. */
   private openTurn: string | null = null;
@@ -118,7 +125,9 @@ export class Speaker {
 
   /** Nothing left to say and nothing more coming: the reply is over. */
   private settle(): void {
-    if (this.outstanding === 0 && !this.held.length && this.openTurn === null) this.setActive(false);
+    if (this.outstanding !== 0 || this.held.length || this.openTurn !== null) return;
+    this.setActive(false);
+    this.said.end();
   }
 
   /** Load Kokoro now (it runs in a worker), so it is ready before the first reply needs it. */
@@ -183,6 +192,7 @@ export class Speaker {
     if (turnId !== this.turnId) {
       this.turnId = turnId;
       this.chunker.reset();
+      this.said.begin(turnId);
     }
     for (const chunk of this.chunker.push(text)) {
       this.openTurn = turnId;
@@ -206,6 +216,7 @@ export class Speaker {
     if (turnId !== this.turnId) {
       this.turnId = turnId;
       this.chunker.reset();
+      this.said.begin(turnId);
       // Nothing streamed for this turn, so the whole reply arrives here at once:
       // speak the sentences it splits into as well, not only the tail that is
       // left in the buffer afterwards.
@@ -219,14 +230,14 @@ export class Speaker {
   say(raw: string): void {
     const text = speakable(raw);
     if (!text || !this.opts.enabled || !this.supported) return;
-    this.queue({ text, choice: voiceChoice(this.opts.voice), rate: this.opts.rate });
+    this.queue({ text, choice: voiceChoice(this.opts.voice), rate: this.opts.rate, turnId: this.turnId });
   }
 
   /** A sample of a voice (while choosing one), even with replies muted. Whatever was playing stops. */
   preview(raw: string, voice: string): void {
     this.cancel();
     const text = speakable(raw);
-    if (text && this.supported) this.queue({ text, choice: voiceChoice(voice), rate: this.opts.rate });
+    if (text && this.supported) this.queue({ text, choice: voiceChoice(voice), rate: this.opts.rate, turnId: null });
   }
 
   private queue(line: Line): void {
@@ -275,12 +286,18 @@ export class Speaker {
     this.outstanding++;
     this.activeEngine = this.engine;
     this.setActive(true);
+    let ms = (line.text.length * 65) / line.rate; // the system voice's pace; a Kokoro clip knows its own length
+    let started = false;
     const sink: Sink = {
       start: () => {
-        if (gen === this.gen) this.setAudible(true);
+        if (gen !== this.gen) return;
+        started = true;
+        this.said.started(line.turnId, wordCount(line.text), ms);
+        this.setAudible(true);
       },
       end: () => {
         if (gen !== this.gen) return;
+        if (!started) this.said.started(line.turnId, wordCount(line.text), 0);
         this.outstanding = Math.max(0, this.outstanding - 1);
         if (this.outstanding === 0) this.setAudible(false);
         this.settle();
@@ -292,8 +309,9 @@ export class Speaker {
       void kokoro.synth(line.text, kokoroVoice(line.choice), line.rate).then((clip) => {
         if (gen !== this.gen) return;
         turnTrace.mark('clip');
-        if (clip) this.player.play(clip, sink);
-        else sink.end();
+        if (!clip) return sink.end();
+        ms = (clip.audio.length / clip.sampleRate) * 1000;
+        this.player.play(clip, sink);
       });
     } else if (this.system.supported) {
       this.system.say(line.text, { voice: line.choice.engine === 'system' ? line.choice.voice : '', rate: line.rate }, sink);
@@ -320,6 +338,7 @@ export class Speaker {
       this.onSpeaking(false);
     }
     this.setActive(false);
+    this.said.end();
   }
 
   private setAudible(on: boolean): void {

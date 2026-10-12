@@ -21,6 +21,8 @@ const CLEAR_ON_ABANDON_MS = 450;
 const CLEAR_AFTER_REPLY_MS = 1500;
 const CLEAR_FALLBACK_MS = 25_000;
 const TYPING_IDLE_MS = 4000;
+/** What they said stays in the intent line until the answer begins, or this long at most. */
+const HEARD_MAX_MS = 20_000;
 
 // ── presence ────────────────────────────────────────────────────────────────
 
@@ -66,6 +68,7 @@ let clearPending = false;
 export function draft(text: string, via: 'text' | 'voice' = 'voice'): void {
   const t = text.trim();
   if (!t) return abandon();
+  if (useIae.getState().voice.heard) ui.voice({ heard: undefined });
   cancelClear();
   draftId ??= `draft-${Date.now().toString(36)}-${++draftSeq}`;
   // Typed text may end mid-word: its last word only counts once finished (lexicon.ts).
@@ -110,7 +113,19 @@ export function send(raw: string, via: 'text' | 'voice'): void {
   const agendaId = question && !aboutOtherNode && answersQuestion(text, question) ? question.id : undefined;
   if (via === 'voice') turnTrace.mark('sent');
   void bridge.say(text, agendaId ? { via, agendaId } : { via });
+  showHeard(text);
   clearAfterReply();
+}
+
+let heardTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Their words stay, settled, in the intent line until the answer begins (useVoice clears them then). */
+function showHeard(text: string): void {
+  clearTimeout(heardTimer);
+  ui.voice({ heard: text });
+  heardTimer = setTimeout(() => {
+    if (useIae.getState().voice.heard === text) ui.voice({ heard: undefined });
+  }, HEARD_MAX_MS);
 }
 
 function finish(): void {
