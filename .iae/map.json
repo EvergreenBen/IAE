@@ -8,12 +8,12 @@
       "kind": "client",
       "status": "built",
       "createdAt": 1791488583607,
-      "updatedAt": 1791587341089,
+      "updatedAt": 1791831619530,
       "paths": [
         "src/renderer/"
       ],
       "order": 0,
-      "summary": "React 19 window where the user talks to Archie and watches the living architecture map.",
+      "summary": "The React window where you talk to Archie and watch a living architecture map of your project.",
       "tech": [
         "React 19",
         "Vite",
@@ -30,11 +30,11 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488583607,
-      "updatedAt": 1791815803539,
+      "updatedAt": 1791831659177,
       "paths": [
         "src/renderer/src/map/"
       ],
-      "summary": "Camera, ELK layout, nodes, edges, files, crew, ghosts, questions and permissions.",
+      "summary": "The zoomable map: layout, nodes, edges, files, crew, ghosts, questions and permissions.",
       "techLabel": "Map"
     },
     "renderer-conversation": {
@@ -44,24 +44,26 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488583607,
-      "updatedAt": 1791488635186,
+      "updatedAt": 1791831659177,
       "paths": [
         "src/renderer/src/conversation/"
       ],
-      "summary": "Intent line, captions, transcript, slash menu and lexicon autocomplete."
+      "summary": "Intent line, captions, transcript, slash menu and word autocomplete.",
+      "techLabel": "Conversation"
     },
     "renderer-lens": {
       "id": "renderer-lens",
       "parentId": "renderer",
-      "label": "Lens",
+      "label": "File Viewer",
       "kind": "module",
       "status": "built",
       "createdAt": 1791488583607,
-      "updatedAt": 1791488635186,
+      "updatedAt": 1791831659177,
       "paths": [
         "src/renderer/src/lens/"
       ],
-      "summary": "CodeMirror file view, .env editor and file meaning panel."
+      "summary": "CodeMirror file view, diffs, .env editor and file-meaning panel.",
+      "techLabel": "Lens"
     },
     "renderer-voice": {
       "id": "renderer-voice",
@@ -70,25 +72,30 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488583607,
-      "updatedAt": 1791587341089,
+      "updatedAt": 1791831659177,
       "paths": [
         "src/renderer/src/voice/"
       ],
-      "summary": "Mic capture, VAD, Whisper speech-to-text and Kokoro voice, with system-voice fallback.",
-      "techLabel": "Voice"
+      "summary": "Mic capture, voice detection, Whisper speech-to-text and Kokoro speech, with a system-voice fallback.",
+      "techLabel": "Voice",
+      "tech": [
+        "@huggingface/transformers",
+        "Web Workers"
+      ]
     },
     "renderer-palette": {
       "id": "renderer-palette",
       "parentId": "renderer",
-      "label": "Palette",
+      "label": "Commands & Settings",
       "kind": "module",
       "status": "built",
       "createdAt": 1791488583607,
-      "updatedAt": 1791488635186,
+      "updatedAt": 1791831659177,
       "paths": [
         "src/renderer/src/palette/"
       ],
-      "summary": "Command palette, settings and notices."
+      "summary": "Command palette, settings and notices.",
+      "techLabel": "Palette"
     },
     "renderer-ui": {
       "id": "renderer-ui",
@@ -97,37 +104,40 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488583607,
-      "updatedAt": 1791488635186,
+      "updatedAt": 1791831659177,
       "paths": [
         "src/renderer/src/ui/"
       ],
-      "summary": "Shared small components and icons."
+      "summary": "Small shared components and icons.",
+      "techLabel": "UI"
     },
     "renderer-avatar": {
       "id": "renderer-avatar",
       "parentId": "renderer",
-      "label": "Avatar",
+      "label": "Archie Avatar",
       "kind": "module",
       "status": "built",
       "createdAt": 1791488583607,
-      "updatedAt": 1791488635186,
+      "updatedAt": 1791831659177,
       "paths": [
         "src/renderer/src/avatar/"
       ],
-      "summary": "Archie the architect avatar and crew tokens."
+      "summary": "The animated Archie figure and builder tokens.",
+      "techLabel": "Avatar"
     },
     "renderer-home": {
       "id": "renderer-home",
       "parentId": "renderer",
-      "label": "Home",
+      "label": "Start Screen",
       "kind": "module",
       "status": "built",
       "createdAt": 1791488583607,
-      "updatedAt": 1791488635186,
+      "updatedAt": 1791831659177,
       "paths": [
         "src/renderer/src/home/"
       ],
-      "summary": "Start screen with recent projects."
+      "summary": "Start screen listing recent projects.",
+      "techLabel": "Home"
     },
     "main": {
       "id": "main",
@@ -136,16 +146,17 @@
       "kind": "service",
       "status": "built",
       "createdAt": 1791488583607,
-      "updatedAt": 1791592842455,
+      "updatedAt": 1791831619530,
       "paths": [
         "src/main/"
       ],
       "order": 1,
-      "summary": "Node-side Engine that runs Claude sessions, indexes the project and persists state.",
+      "summary": "The Node side that runs Claude sessions, indexes the project and saves its state.",
       "tech": [
         "Electron",
-        "Node 24",
-        "Claude Agent SDK"
+        "Node",
+        "Claude Agent SDK",
+        "chokidar"
       ],
       "techLabel": "Electron Main"
     },
@@ -156,8 +167,8 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488602057,
-      "updatedAt": 1791587341089,
-      "summary": "Typed contract (IaeApi + EngineEvent) and preload that connect renderer and main.",
+      "updatedAt": 1791831619530,
+      "summary": "The typed contract and preload script that let the window call the brain and hear its events.",
       "tech": [
         "Electron IPC",
         "TypeScript"
@@ -173,11 +184,11 @@
       "parentId": null,
       "label": "Saved Project",
       "kind": "data",
-      "status": "building",
+      "status": "built",
       "createdAt": 1791488602057,
-      "updatedAt": 1791815830640,
-      "summary": "Per-project .iae/ folder (map, agenda, decisions, transcript, notes) plus app-level recent/settings JSON.",
-      "techLabel": "Project State"
+      "updatedAt": 1791831619530,
+      "summary": "Per-project .iae folder (map, agenda, transcript, notes, crew jobs) plus app-wide recents and settings.",
+      "techLabel": ".iae/ project state"
     },
     "claude": {
       "id": "claude",
@@ -186,13 +197,13 @@
       "kind": "ai",
       "status": "built",
       "createdAt": 1791488602057,
-      "updatedAt": 1791587341089,
-      "summary": "Claude Agent SDK sessions (lead, crew, cartographer, sketcher) powering all reasoning and building.",
+      "updatedAt": 1791831619530,
+      "summary": "Claude sessions that do all the thinking, talking and code-building.",
       "tech": [
         "Claude Agent SDK",
         "MCP"
       ],
-      "techLabel": "Claude Code"
+      "techLabel": "Claude Code / Agent SDK"
     },
     "huggingface": {
       "id": "huggingface",
@@ -201,8 +212,8 @@
       "kind": "external",
       "status": "built",
       "createdAt": 1791488602057,
-      "updatedAt": 1791587341089,
-      "summary": "Source of Whisper speech-to-text models downloaded on first use.",
+      "updatedAt": 1791831619530,
+      "summary": "Where the Whisper and Kokoro voice models are downloaded from.",
       "techLabel": "Hugging Face"
     },
     "infra": {
@@ -212,15 +223,14 @@
       "kind": "infra",
       "status": "built",
       "createdAt": 1791488602057,
-      "updatedAt": 1791587341089,
-      "summary": "Build/packaging config, dev scripts, docs and the sample repo fixture.",
+      "updatedAt": 1791831619530,
+      "summary": "Build and packaging config, dev scripts, docs and a sample repo for demos.",
       "tech": [
         "electron-vite",
         "electron-builder",
         "vitest"
       ],
       "paths": [
-        "*",
         "scripts/",
         "docs/",
         "examples/"
@@ -234,13 +244,15 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791488619377,
-      "summary": "Electron bootstrap, window, menu and generic IPC dispatch to the Engine.",
+      "updatedAt": 1791831637179,
+      "summary": "Starts the app window and menu, and routes window calls to the engine.",
       "paths": [
         "src/main/index.ts",
         "src/main/ipc.ts",
-        "src/main/menu.ts"
-      ]
+        "src/main/menu.ts",
+        "src/main/selfwatch.ts"
+      ],
+      "techLabel": "Electron bootstrap & IPC"
     },
     "main-config": {
       "id": "main-config",
@@ -249,11 +261,12 @@
       "kind": "config",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791488619377,
-      "summary": "Environment variables and settings read by the main process.",
+      "updatedAt": 1791831637179,
+      "summary": "Loads the user's login PATH and environment so Claude Code and its tools can run.",
       "paths": [
         "src/main/env.ts"
-      ]
+      ],
+      "techLabel": "Env / PATH"
     },
     "engine": {
       "id": "engine",
@@ -262,8 +275,8 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791587341089,
-      "summary": "Implements IaeApi: orchestrates sessions, map ops, agenda and events.",
+      "updatedAt": 1791831637179,
+      "summary": "Runs the whole show: sessions, map changes, questions and events.",
       "paths": [
         "src/main/engine/"
       ],
@@ -276,20 +289,22 @@
       "kind": "ai",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791587341089,
-      "summary": "Warm streaming Opus session that converses and drives the map via iae MCP tools.",
+      "updatedAt": 1791831637179,
+      "summary": "The always-warm conversational architect that talks with you and drives the map through its own tools.",
       "paths": [
         "src/main/engine/lead.ts",
         "src/main/engine/lead.test.ts",
         "src/main/engine/lead-options.ts",
+        "src/main/engine/lead-options.test.ts",
+        "src/main/engine/tools.ts",
+        "src/main/engine/tools.test.ts",
         "src/main/engine/context.ts",
         "src/main/engine/context.test.ts",
         "src/main/engine/speech.ts",
         "src/main/engine/speech.test.ts",
-        "src/main/engine/prompts.ts",
-        "src/main/engine/tools.ts",
-        "src/main/engine/tools.test.ts",
-        "src/main/engine/sdk.ts"
+        "src/main/engine/repeat.ts",
+        "src/main/engine/repeat.test.ts",
+        "src/main/engine/prompts.ts"
       ],
       "techLabel": "Lead"
     },
@@ -300,18 +315,15 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791587341089,
-      "summary": "Builder/scout Claude Code jobs with permissions, shell gate and activity streaming.",
+      "updatedAt": 1791831637179,
+      "summary": "Claude Code builder and scout jobs, with permission gates and live activity reporting.",
       "paths": [
         "src/main/engine/crew.ts",
         "src/main/engine/crew-tools.ts",
         "src/main/engine/builder.ts",
+        "src/main/engine/builder.test.ts",
         "src/main/engine/gate.ts",
-        "src/main/engine/gate.test.ts",
-        "src/main/engine/activity.ts",
-        "src/main/engine/activity.test.ts",
-        "src/main/engine/passthrough.ts",
-        "src/main/engine/workspace.ts"
+        "src/main/engine/gate.test.ts"
       ],
       "techLabel": "Crew"
     },
@@ -322,8 +334,8 @@
       "kind": "ai",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791587341089,
-      "summary": "Read-only sessions that map existing repos and annotate files.",
+      "updatedAt": 1791831637179,
+      "summary": "Read-only sessions that map existing code and write one-line file notes.",
       "paths": [
         "src/main/engine/cartographer.ts",
         "src/main/engine/notes.ts"
@@ -337,8 +349,8 @@
       "kind": "ai",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791587341089,
-      "summary": "Warm Haiku session turning draft speech into ghost component proposals.",
+      "updatedAt": 1791831637179,
+      "summary": "A fast Haiku session that turns half-spoken ideas into ghost components.",
       "paths": [
         "src/main/engine/sketcher.ts",
         "src/main/engine/sketcher.test.ts"
@@ -352,14 +364,15 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791488619377,
-      "summary": "Applies and diffs map operations so agents keep the map truthful.",
+      "updatedAt": 1791831637179,
+      "summary": "Applies and compares map changes so the map stays truthful.",
       "paths": [
         "src/main/engine/mapops.ts",
         "src/main/engine/mapops.test.ts",
         "src/main/engine/mapdiff.ts",
         "src/main/engine/mapdiff.test.ts"
-      ]
+      ],
+      "techLabel": "mapops / mapdiff"
     },
     "engine-agenda": {
       "id": "engine-agenda",
@@ -368,15 +381,13 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791587341089,
-      "summary": "Open questions/decisions plus the idle heartbeat that nudges the lead.",
+      "updatedAt": 1791831637179,
+      "summary": "Tracks open questions and decisions, and nudges Archie when it's quiet.",
       "paths": [
         "src/main/engine/agenda.ts",
         "src/main/engine/agenda.test.ts",
         "src/main/engine/pulse.ts",
-        "src/main/engine/pulse.test.ts",
-        "src/main/engine/repeat.ts",
-        "src/main/engine/repeat.test.ts"
+        "src/main/engine/pulse.test.ts"
       ],
       "techLabel": "Agenda & Pulse"
     },
@@ -387,12 +398,16 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791488619377,
-      "summary": "Engine class and per-project session wiring.",
+      "updatedAt": 1791831637179,
+      "summary": "The engine class and the open-project workspace every part changes state through.",
       "paths": [
         "src/main/engine/engine.ts",
-        "src/main/engine/project-session.ts"
-      ]
+        "src/main/engine/project-session.ts",
+        "src/main/engine/workspace.ts",
+        "src/main/engine/sdk.ts",
+        "src/main/engine/passthrough.ts"
+      ],
+      "techLabel": "Engine + Workspace"
     },
     "project": {
       "id": "project",
@@ -401,11 +416,12 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791488619377,
-      "summary": "Gitignore-aware file scanning/watching, heuristic first map and .iae persistence.",
+      "updatedAt": 1791831637179,
+      "summary": "Scans and watches project files, guesses a first map and saves state.",
       "paths": [
         "src/main/project/"
-      ]
+      ],
+      "techLabel": "Project"
     },
     "project-store": {
       "id": "project-store",
@@ -414,11 +430,12 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791488619377,
-      "summary": "Reads/writes .iae project files and recent projects.",
+      "updatedAt": 1791831637179,
+      "summary": "Atomic, debounced JSON saves for .iae project files and app recents/settings.",
       "paths": [
         "src/main/project/store.ts"
-      ]
+      ],
+      "techLabel": "store.ts"
     },
     "project-files": {
       "id": "project-files",
@@ -427,12 +444,13 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791488619377,
-      "summary": "Scans and watches project files with chokidar.",
+      "updatedAt": 1791831637179,
+      "summary": "Gitignore-aware file scanning and watching.",
       "paths": [
         "src/main/project/files.ts",
         "src/main/project/files.test.ts"
-      ]
+      ],
+      "techLabel": "files.ts"
     },
     "project-heuristic": {
       "id": "project-heuristic",
@@ -441,12 +459,13 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488619377,
-      "updatedAt": 1791488619377,
-      "summary": "Instant first map from folders and manifests.",
+      "updatedAt": 1791831637179,
+      "summary": "An instant first map from folders and manifests.",
       "paths": [
         "src/main/project/heuristic.ts",
         "src/main/project/heuristic.test.ts"
-      ]
+      ],
+      "techLabel": "heuristic.ts"
     },
     "renderer-state": {
       "id": "renderer-state",
@@ -455,11 +474,12 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488635186,
-      "updatedAt": 1791488635186,
-      "summary": "Zustand store folding every EngineEvent through one reduce().",
+      "updatedAt": 1791831659177,
+      "summary": "One store that folds every engine event into app state.",
       "paths": [
         "src/renderer/src/state/"
-      ]
+      ],
+      "techLabel": "zustand store"
     },
     "renderer-bridge": {
       "id": "renderer-bridge",
@@ -468,11 +488,12 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488635186,
-      "updatedAt": 1791488635186,
-      "summary": "Access to window.iae, with a mock engine for browser dev.",
+      "updatedAt": 1791831659177,
+      "summary": "Talks to window.iae, with a mock engine for browser-only dev.",
       "paths": [
         "src/renderer/src/bridge/"
-      ]
+      ],
+      "techLabel": "window.iae client"
     },
     "shared": {
       "id": "shared",
@@ -481,11 +502,12 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488635186,
-      "updatedAt": 1791488635186,
-      "summary": "IaeApi, EngineEvent and ArchMap model shared by both processes.",
+      "updatedAt": 1791831659177,
+      "summary": "The API, event and map types both sides agree on.",
       "paths": [
         "src/shared/"
-      ]
+      ],
+      "techLabel": "IaeApi / EngineEvent / ArchMap"
     },
     "preload": {
       "id": "preload",
@@ -494,11 +516,12 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488635186,
-      "updatedAt": 1791488635186,
-      "summary": "Exposes window.iae via contextBridge, forwarding to ipcRenderer.",
+      "updatedAt": 1791831659177,
+      "summary": "Exposes window.iae and forwards calls over IPC.",
       "paths": [
         "src/preload/"
-      ]
+      ],
+      "techLabel": "contextBridge"
     },
     "infra-config": {
       "id": "infra-config",
@@ -507,8 +530,8 @@
       "kind": "config",
       "status": "built",
       "createdAt": 1791488635186,
-      "updatedAt": 1791488635186,
-      "summary": "package.json, tsconfigs, vite/electron-vite, vitest and electron-builder config.",
+      "updatedAt": 1791831659177,
+      "summary": "package.json, tsconfigs, Vite, Vitest and electron-builder settings.",
       "paths": [
         "package.json",
         "package-lock.json",
@@ -520,7 +543,8 @@
         "vitest.config.ts",
         "electron-builder.yml",
         ".gitignore"
-      ]
+      ],
+      "techLabel": "Build config"
     },
     "infra-scripts": {
       "id": "infra-scripts",
@@ -529,8 +553,8 @@
       "kind": "infra",
       "status": "built",
       "createdAt": 1791488635186,
-      "updatedAt": 1791488635186,
-      "summary": "Voice model fetch, screenshots and engine smoke tests.",
+      "updatedAt": 1791831659177,
+      "summary": "Dev launcher, voice model fetch, screenshots and engine smoke tests.",
       "paths": [
         "scripts/"
       ]
@@ -542,8 +566,8 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791488635186,
-      "updatedAt": 1791488635186,
-      "summary": "PRD, architecture, design and guides.",
+      "updatedAt": 1791831659177,
+      "summary": "Product spec, architecture, design and guides.",
       "paths": [
         "docs/",
         "README.md",
@@ -553,28 +577,40 @@
     "infra-example": {
       "id": "infra-example",
       "parentId": "infra",
-      "label": "Recipe Box",
+      "label": "Recipe Box Sample",
       "kind": "module",
       "status": "built",
       "createdAt": 1791488635186,
-      "updatedAt": 1791488635186,
-      "summary": "Sample monorepo fixture used to demo cartography.",
+      "updatedAt": 1791831659177,
+      "summary": "A sample monorepo used to demo mapping existing code.",
       "paths": [
         "examples/"
-      ]
+      ],
+      "techLabel": "examples/recipe-box"
     },
     "voice-kokoro": {
       "id": "voice-kokoro",
       "parentId": "renderer-voice",
-      "label": "Kokoro TTS",
+      "label": "Archie's Voice",
       "kind": "ai",
       "status": "built",
       "createdAt": 1791488742546,
-      "updatedAt": 1791575408738,
-      "summary": "Local neural voice that streams Archie's replies sentence by sentence.",
+      "updatedAt": 1791831659177,
+      "summary": "Local neural voice that speaks Archie's replies sentence by sentence.",
       "tech": [
         "kokoro-js",
         "ONNX"
+      ],
+      "techLabel": "Kokoro TTS",
+      "paths": [
+        "src/renderer/src/voice/kokoro.ts",
+        "src/renderer/src/voice/kokoroWorker.ts",
+        "src/renderer/src/voice/kokoroConfig.ts",
+        "src/renderer/src/voice/kokoro.test.ts",
+        "src/renderer/src/voice/tts.ts",
+        "src/renderer/src/voice/tts.test.ts",
+        "src/renderer/src/voice/systemVoice.ts",
+        "src/renderer/src/voice/clipPlayer.ts"
       ]
     },
     "crew-resume": {
@@ -584,41 +620,149 @@
       "kind": "module",
       "status": "built",
       "createdAt": 1791492467620,
-      "updatedAt": 1791575408738,
-      "summary": "Saves each builder job and its Claude Code session to .iae/crew.json so unfinished jobs pick up again after a restart.",
+      "updatedAt": 1791831637179,
+      "summary": "Saves builder jobs so unfinished ones pick up again after a restart.",
       "paths": [
         "src/main/engine/crew-persist.ts",
         "src/main/engine/crew-persist.test.ts"
-      ]
-    },
-    "map-live-diff": {
-      "id": "map-live-diff",
-      "parentId": "renderer-map",
-      "label": "Live Diffs",
-      "kind": "module",
-      "status": "built",
-      "createdAt": 1791492467620,
-      "updatedAt": 1791575408738,
-      "summary": "Shows each builder's edits as they happen, so the person can see and steer."
+      ],
+      "techLabel": "crew-persist"
     },
     "map-crew-progress": {
       "id": "map-crew-progress",
       "parentId": "renderer-map",
-      "label": "Crew Progress",
+      "label": "Crew on the Map",
       "kind": "module",
       "status": "built",
       "createdAt": 1791492567883,
-      "updatedAt": 1791575408738,
-      "summary": "Per-builder progress bar and current step, from each builder's todo checklist."
+      "updatedAt": 1791831659177,
+      "summary": "Shows each builder's position, progress and live edits on the map.",
+      "techLabel": "Crew / Activity",
+      "paths": [
+        "src/renderer/src/map/Crew.tsx",
+        "src/renderer/src/map/CrewPanel.tsx",
+        "src/renderer/src/map/Activity.tsx",
+        "src/renderer/src/map/crewTime.ts",
+        "src/renderer/src/map/Permission.tsx",
+        "src/renderer/src/map/permText.ts",
+        "src/renderer/src/map/permHome.ts"
+      ]
+    },
+    "crew-activity": {
+      "id": "crew-activity",
+      "parentId": "engine-crew",
+      "label": "Live Progress",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791831637179,
+      "updatedAt": 1791831637179,
+      "techLabel": "Activity / Progress / Changes",
+      "summary": "Turns builder tool calls into plain-words steps, progress and line-change counts.",
+      "paths": [
+        "src/main/engine/activity.ts",
+        "src/main/engine/activity.test.ts",
+        "src/main/engine/progress.ts",
+        "src/main/engine/progress.test.ts",
+        "src/main/engine/changes.ts",
+        "src/main/engine/changes.test.ts",
+        "src/main/engine/plain.ts",
+        "src/main/engine/plain.test.ts",
+        "src/main/engine/whereabouts.ts"
+      ]
+    },
+    "project-git": {
+      "id": "project-git",
+      "parentId": "project",
+      "label": "Git Diffs",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791831637179,
+      "updatedAt": 1791831637179,
+      "techLabel": "git.ts",
+      "summary": "Reads a file's changes since the last commit, read-only.",
+      "paths": [
+        "src/main/project/git.ts",
+        "src/main/project/git.test.ts"
+      ]
+    },
+    "renderer-shell": {
+      "id": "renderer-shell",
+      "parentId": "renderer",
+      "label": "Window Shell",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791831659177,
+      "updatedAt": 1791831659177,
+      "techLabel": "App.tsx",
+      "summary": "Entry point that picks home or project view and wires everything together.",
+      "paths": [
+        "src/renderer/index.html",
+        "src/renderer/src/App.tsx",
+        "src/renderer/src/main.tsx",
+        "src/renderer/src/devReload.ts"
+      ]
+    },
+    "voice-stt": {
+      "id": "voice-stt",
+      "parentId": "renderer-voice",
+      "label": "Speech to Text",
+      "kind": "ai",
+      "status": "built",
+      "createdAt": 1791831659177,
+      "updatedAt": 1791831659177,
+      "techLabel": "Whisper STT",
+      "summary": "Local Whisper model in a worker that turns your speech into words.",
+      "paths": [
+        "src/renderer/src/voice/stt.ts",
+        "src/renderer/src/voice/sttWorker.ts",
+        "src/renderer/src/voice/sttConfig.ts",
+        "src/renderer/src/voice/vad.ts",
+        "src/renderer/src/voice/mic.ts"
+      ]
+    },
+    "map-layout": {
+      "id": "map-layout",
+      "parentId": "renderer-map",
+      "label": "Layout & Camera",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791831659177,
+      "updatedAt": 1791831659177,
+      "techLabel": "ELK layout",
+      "summary": "Arranges boxes with ELK and moves the camera smoothly.",
+      "paths": [
+        "src/renderer/src/map/elk.ts",
+        "src/renderer/src/map/layout.ts",
+        "src/renderer/src/map/layoutTypes.ts",
+        "src/renderer/src/map/camera.ts",
+        "src/renderer/src/map/geometry.ts",
+        "src/renderer/src/map/measure.ts",
+        "src/renderer/src/map/driver.ts"
+      ]
+    },
+    "map-ghosts": {
+      "id": "map-ghosts",
+      "parentId": "renderer-map",
+      "label": "Ghosts & Questions",
+      "kind": "module",
+      "status": "built",
+      "createdAt": 1791831659177,
+      "updatedAt": 1791831659177,
+      "techLabel": "Ghosts / Questions",
+      "summary": "Draft components and question cards pinned onto the map.",
+      "paths": [
+        "src/renderer/src/map/Ghosts.tsx",
+        "src/renderer/src/map/ghostDedupe.ts",
+        "src/renderer/src/map/ghostHold.ts",
+        "src/renderer/src/map/ghostPlace.ts",
+        "src/renderer/src/map/Questions.tsx",
+        "src/renderer/src/map/questionPlace.ts",
+        "src/renderer/src/map/agendaPick.ts",
+        "src/renderer/src/map/activeAgenda.ts"
+      ]
     }
   },
   "edges": {
-    "renderer->main": {
-      "id": "renderer->main",
-      "from": "renderer",
-      "to": "main",
-      "kind": "calls"
-    },
     "renderer->bridge": {
       "id": "renderer->bridge",
       "from": "renderer",
@@ -814,6 +958,83 @@
       "to": "project-store",
       "kind": "writes",
       "label": "crew.json"
+    },
+    "engine-lead->engine-map": {
+      "id": "engine-lead->engine-map",
+      "from": "engine-lead",
+      "to": "engine-map",
+      "kind": "writes",
+      "label": "map_update"
+    },
+    "engine-lead->engine-agenda": {
+      "id": "engine-lead->engine-agenda",
+      "from": "engine-lead",
+      "to": "engine-agenda",
+      "kind": "writes",
+      "label": "questions"
+    },
+    "engine-core->project-files": {
+      "id": "engine-core->project-files",
+      "from": "engine-core",
+      "to": "project-files",
+      "kind": "calls",
+      "label": "scan & watch"
+    },
+    "main-config->engine": {
+      "id": "main-config->engine",
+      "from": "main-config",
+      "to": "engine",
+      "kind": "depends",
+      "label": "PATH"
+    },
+    "renderer-lens->renderer-bridge": {
+      "id": "renderer-lens->renderer-bridge",
+      "from": "renderer-lens",
+      "to": "renderer-bridge",
+      "kind": "calls",
+      "label": "read/write files"
+    },
+    "renderer-conversation->renderer-voice": {
+      "id": "renderer-conversation->renderer-voice",
+      "from": "renderer-conversation",
+      "to": "renderer-voice",
+      "kind": "calls",
+      "label": "speak"
+    },
+    "voice-stt->huggingface": {
+      "id": "voice-stt->huggingface",
+      "from": "voice-stt",
+      "to": "huggingface",
+      "kind": "reads",
+      "label": "Whisper"
+    },
+    "renderer-bridge->shared": {
+      "id": "renderer-bridge->shared",
+      "from": "renderer-bridge",
+      "to": "shared",
+      "kind": "depends",
+      "label": "types"
+    },
+    "engine-crew->crew-activity": {
+      "id": "engine-crew->crew-activity",
+      "from": "engine-crew",
+      "to": "crew-activity",
+      "kind": "events",
+      "label": "tool stream"
+    },
+    "engine-core->engine-sketcher": {
+      "id": "engine-core->engine-sketcher",
+      "from": "engine-core",
+      "to": "engine-sketcher",
+      "kind": "calls",
+      "label": "draft speech"
+    },
+    "main-shell->renderer": {
+      "id": "main-shell->renderer",
+      "from": "main-shell",
+      "to": "renderer",
+      "kind": "events",
+      "label": "EngineEvent"
     }
   }
 }
