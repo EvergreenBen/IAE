@@ -1,6 +1,8 @@
 # `npm run package` → release/mac-arm64/Arxitect.app (unsigned, for local use)
+# `npm run dist`    → release/Arxitect-<version>-arm64.dmg (+ .zip) to hand to friends
 appId: com.evergreen.arxitect
 productName: Arxitect
+artifactName: ${productName}-${version}-${arch}.${ext}
 directories:
   output: release
   buildResources: build
@@ -12,9 +14,23 @@ asarUnpack:
   - node_modules/@anthropic-ai/claude-agent-sdk/**
   - node_modules/@anthropic-ai/claude-agent-sdk-*/**
 mac:
-  target: dir
+  target:
+    - target: dir
+      arch: arm64
   icon: build/icon.icns
   category: public.app-category.developer-tools
-  identity: null
+  # Ad-hoc signature: no Apple Developer account, but Apple Silicon will run it
+  # once the person approves it in Privacy & Security (see docs/INSTALL.md).
+  identity: '-'
+  hardenedRuntime: false
   extendInfo:
     NSMicrophoneUsageDescription: Arxitect listens while you hold Space, or when hands-free voice is on.
+dmg:
+  title: ${productName}
+  contents:
+    - x: 140
+      y: 190
+    - x: 400
+      y: 190
+      type: link
+      path: /Applications

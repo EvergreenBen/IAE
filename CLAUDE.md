@@ -63,6 +63,7 @@ npm run typecheck    # both tsconfigs (node + web)
 npm test             # vitest (shared/ + engine pure logic)
 npm run voice:setup  # optional: pre-download the voice models (Whisper + Kokoro) for offline voice
 npm run package      # release/mac-arm64/Arxitect.app (unsigned, local use)
+npm run dist         # release/Arxitect-<version>-arm64.dmg + .zip to share (see docs/INSTALL.md)
 ```
 
 Engine scripts (real Claude, they cost tokens):

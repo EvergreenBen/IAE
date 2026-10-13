@@ -36,6 +36,10 @@ download on first use, or ahead of time with `npm run voice:setup`.
 is useful for design work. `npm run package` builds a standalone `Arxitect.app`
 (unsigned) into `release/`.
 
+To hand Arxitect to someone who won't build it, run `npm run dist`. It writes
+`release/Arxitect-<version>-arm64.dmg` (and a `.zip`). Send it with
+[`docs/INSTALL.md`](docs/INSTALL.md).
+
 To try it on an existing codebase, open `examples/recipe-box`, a small demo
 monorepo. Then follow [`docs/DEMO.md`](docs/DEMO.md).
 
