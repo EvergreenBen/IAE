@@ -330,6 +330,31 @@
   color: var(--ink-2);
 }
 
+.link,
+.quiet {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.link {
+  color: var(--accent);
+}
+
+.quiet {
+  color: var(--ink-3);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.link:hover,
+.quiet:hover {
+  color: var(--ink);
+}
+
 .detail {
   flex-basis: 100%;
   font-size: var(--text-xs);

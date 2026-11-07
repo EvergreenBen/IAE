@@ -275,7 +275,11 @@ export class ProjectSession {
   }
 
   settingsChanged(prev: Settings, next: Settings): void {
-    if (prev.leadModel !== next.leadModel || prev.leadEffort !== next.leadEffort || prev.leadName !== next.leadName || prev.maxBuilders !== next.maxBuilders) {
+    // A new agent starts its own conversation: the lead's history stays with the old one.
+    if (prev.provider !== next.provider || prev.codexModel !== next.codexModel) {
+      this.lead.refresh(prev.provider !== next.provider ? `you now run on ${next.provider === 'codex' ? 'Codex' : 'Claude Code'}, in a new session; the map, notes and decisions carry over.` : undefined);
+      this.sketcher.refresh();
+    } else if (prev.leadModel !== next.leadModel || prev.leadEffort !== next.leadEffort || prev.leadName !== next.leadName || prev.maxBuilders !== next.maxBuilders) {
       const renamed = prev.leadName !== next.leadName && next.leadName.trim();
       this.lead.refresh(renamed ? `your name is now ${next.leadName} (it was ${prev.leadName}); use the new name from now on.` : undefined);
     }

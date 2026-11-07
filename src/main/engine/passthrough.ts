@@ -1,7 +1,9 @@
 // Claude Code passthrough: is Claude available, which slash commands exist in
 // this project, and quick plain-language file explanations.
 
-import { query, type SlashCommand } from '@anthropic-ai/claude-agent-sdk';
+import type { SlashCommand } from '@anthropic-ai/claude-agent-sdk';
+import { provider, query } from './agent';
+import { checkCodex } from './codex/status';
 import type { SlashCommandInfo } from '../../shared/model';
 import { baseOptions, errorText, InputQueue, leanOptions, oneShot } from './sdk';
 
@@ -20,6 +22,11 @@ export interface ClaudeCheck {
 }
 
 const NOT_SIGNED_IN = 'Claude Code is not signed in. Run `claude` in a terminal and use /login, then reopen Arxitect.';
+
+/** Whether the chosen agent (Claude Code or Codex) can run. */
+export function checkAgent(cwd: string): Promise<ClaudeCheck> {
+  return provider() === 'codex' ? checkCodex() : checkClaude(cwd);
+}
 
 /**
  * Starts a session without sending anything (no tokens spent) and reads the
@@ -105,6 +112,8 @@ export function toCommandInfos(cmds: SlashCommand[]): SlashCommandInfo[] {
 
 /** The project's commands and skills, exactly as Claude Code sees them (user + project + plugins). */
 export async function listProjectCommands(cwd: string): Promise<SlashCommandInfo[]> {
+  // Codex's slash commands only exist in its terminal UI.
+  if (provider() === 'codex') return [];
   const input = new InputQueue();
   const q = query({ prompt: input, options: { ...baseOptions(cwd), settingSources: ['user', 'project', 'local'], persistSession: false } });
   try {

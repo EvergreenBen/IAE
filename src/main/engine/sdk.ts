@@ -1,6 +1,7 @@
 // Small helpers around the Claude Agent SDK shared by every session type.
 
-import { query, type Options, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { Options, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { query } from './agent';
 
 export const CLIENT_APP = 'iae/0.1.0';
 

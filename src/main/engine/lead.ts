@@ -2,7 +2,8 @@
 // input queue. One turn is in flight at a time; later turns queue and coalesce.
 // Text deltas become lead/delta, the reply becomes lead/done.
 
-import { query, type McpSdkServerConfigWithInstance, type Query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { McpSdkServerConfigWithInstance, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { query, resumable, type Query } from './agent';
 import { nanoid } from 'nanoid';
 import type { EngineEvent } from '../../shared/events';
 import type { Settings } from '../../shared/model';
@@ -243,7 +244,8 @@ export class Lead {
   private createSession(): Session {
     const s = this.d.settings();
     const ws = this.d.ws;
-    const resume = this.resumeTries < 2 ? ws.state.leadSessionId : undefined;
+    const saved = ws.state.leadSessionId;
+    const resume = this.resumeTries < 2 && resumable(saved) ? saved : undefined;
     const input = new InputQueue();
     const q = query({ prompt: input, options: leadOptions(ws.root, s, this.d.makeTools(), resume, (tool, toolInput) => this.holdForAnswer(tool, toolInput)) });
     const session: Session = { q, input, usedResume: !!resume, gotInit: false, closing: false };

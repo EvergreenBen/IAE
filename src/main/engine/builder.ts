@@ -3,7 +3,8 @@
 // line in plain words (plain.ts), and the node it's standing on, read as the
 // stream arrives (whereabouts.ts).
 
-import { query, type CanUseTool, type PermissionResult, type PermissionUpdate, type Query, type SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { CanUseTool, PermissionResult, PermissionUpdate, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import { query, resumable, type Query } from './agent';
 import type { EngineEvent } from '../../shared/events';
 import { describeMap } from '../../shared/map';
 import type { AgendaItem, AgentInfo, AgentStep, Autonomy, Settings } from '../../shared/model';
@@ -153,6 +154,11 @@ export class BuilderRun {
       onProgress: (report) => this.report(report),
     });
     const ownTools = crewToolNames({ canAsk: true, canNote: !this.isScout, canProgress: !this.isScout });
+    // Saved by the other agent (Settings changed since): start over from the brief.
+    if (this.sessionId && !resumable(this.sessionId)) {
+      this.sessionId = undefined;
+      this.resumeNote = undefined;
+    }
     this.resuming = !!this.sessionId;
     this.workStartedAt = Date.now();
     this.where.reset();

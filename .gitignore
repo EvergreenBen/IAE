@@ -2,6 +2,8 @@ node_modules/
 out/
 dist/
 release/
+# Windows binaries of Claude Code and Codex for npm run dist:win
+vendor/
 .DS_Store
 *.log
 .env

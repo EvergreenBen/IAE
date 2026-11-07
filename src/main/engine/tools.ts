@@ -1,7 +1,8 @@
 // The lead's in-process MCP server ("iae"). Handlers are fast and never block
 // on a builder: delegate queues a job and returns at once.
 
-import { createSdkMcpServer, tool, type McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk';
+import { tool, type McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk';
+import { toolServer } from './agent';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import type { EngineEvent } from '../../shared/events';
@@ -152,7 +153,7 @@ export function createLeadTools(host: LeadToolHost): McpSdkServerConfigWithInsta
     return { id: null, note: ` (no node "${id}", so it isn't anchored)` };
   };
 
-  return createSdkMcpServer({
+  return toolServer({
     name: 'iae',
     version: '0.1.0',
     alwaysLoad: true,

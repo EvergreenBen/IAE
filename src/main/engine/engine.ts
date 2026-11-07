@@ -20,7 +20,9 @@ import {
 import { readProjectFile, resolveInside, writeProjectFile } from '../project/files';
 import { diffFile } from '../project/git';
 import { AppStore, createProjectFolder, defaultProjectsDir, mergeSettings } from '../project/store';
-import { checkClaude } from './passthrough';
+import { useProvider } from './agent';
+import { signInCodex } from './codex/status';
+import { checkAgent } from './passthrough';
 import { ProjectSession } from './project-session';
 import { errorText, log } from './sdk';
 
@@ -51,6 +53,7 @@ export class Engine implements IaeApi {
     this.app = new AppStore(host.userDataDir());
     this.ready = this.app.loadSettings().then((s) => {
       this.settings = s;
+      useProvider(s);
     });
   }
 
@@ -63,9 +66,18 @@ export class Engine implements IaeApi {
   /** Lightweight auth/spawn check: no tokens are spent. */
   async checkStatus(): Promise<void> {
     this.setClaude('connecting');
-    const r = await checkClaude(this.host.homeDir());
+    const r = await checkAgent(this.host.homeDir());
     if (r.ok) this.setClaude('ready');
-    else if (this.claude.status !== 'ready') this.setClaude('unavailable', r.detail);
+    else this.setClaude('unavailable', r.detail);
+  }
+
+  /** Codex: opens the browser to sign in with ChatGPT. Claude Code signs in from its own terminal UI. */
+  async signIn(): Promise<void> {
+    await this.ready;
+    if (this.settings.provider !== 'codex') return this.checkStatus();
+    this.setClaude('connecting');
+    const r = await signInCodex();
+    this.setClaude(r.ok ? 'ready' : 'unavailable', r.ok ? undefined : r.detail);
   }
 
   private setClaude(status: ClaudeStatus, detail?: string): void {
@@ -309,9 +321,11 @@ export class Engine implements IaeApi {
     await this.ready;
     const prev = this.settings;
     this.settings = mergeSettings(prev, patch);
+    useProvider(this.settings);
     await this.app.saveSettings(this.settings);
     this.emit({ type: 'settings/changed', settings: this.settings });
     this.project?.settingsChanged(prev, this.settings);
+    if (prev.provider !== this.settings.provider) void this.checkStatus();
     return this.settings;
   }
 }

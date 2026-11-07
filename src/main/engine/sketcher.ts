@@ -5,7 +5,7 @@
 // ghosts shown for an utterance are the union of every answer for it: later
 // words add ghosts, they never wipe out what the first words sketched.
 
-import { query, type Query } from '@anthropic-ai/claude-agent-sdk';
+import { query, type Query } from './agent';
 import type { EngineEvent } from '../../shared/events';
 import { slug } from '../../shared/map';
 import type { ArchMap, GhostProposal, Settings } from '../../shared/model';
@@ -327,6 +327,11 @@ export class Sketcher {
       // already gone
     }
     if (this.session === session) this.session = null;
+  }
+
+  /** The agent changed (Settings): the next draft starts a new session on it. */
+  refresh(): void {
+    if (this.session) this.dropSession(this.session);
   }
 
   close(): void {

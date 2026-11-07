@@ -1,5 +1,6 @@
 # `npm run package` → release/mac-arm64/Arxitect.app (unsigned, for local use)
 # `npm run dist`    → release/Arxitect-<version>-arm64.dmg (+ .zip) to hand to friends
+# `npm run dist:win` → release/Arxitect-<version>-x64.exe, a Windows installer (built on the Mac)
 appId: com.evergreen.arxitect
 productName: Arxitect
 artifactName: ${productName}-${version}-${arch}.${ext}
@@ -9,10 +10,11 @@ directories:
 files:
   - out/**
   - package.json
-# Claude Code's native binary must live outside the asar archive to be executable.
+# Claude Code's and Codex's native binaries must live outside the asar archive to be executable.
 asarUnpack:
   - node_modules/@anthropic-ai/claude-agent-sdk/**
   - node_modules/@anthropic-ai/claude-agent-sdk-*/**
+  - node_modules/@openai/codex-*/**
 mac:
   target:
     - target: dir
@@ -25,6 +27,26 @@ mac:
   hardenedRuntime: false
   extendInfo:
     NSMicrophoneUsageDescription: Arxitect listens while you hold Space, or when hands-free voice is on.
+win:
+  target:
+    - target: nsis
+      arch: x64
+  icon: build/icon.png
+  # node_modules holds the Mac binaries; the Windows ones come from vendor/
+  # (scripts/fetch-win-agents.mjs) and go where the app looks for them.
+  files:
+    - '!node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/**'
+    - '!node_modules/@openai/codex-darwin-*/**'
+  extraResources:
+    - from: vendor/claude-win32-x64
+      to: app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-win32-x64
+      filter: ['**/*', '!.spec']
+    - from: vendor/codex-win32-x64
+      to: app.asar.unpacked/node_modules/@openai/codex-win32-x64
+      filter: ['**/*', '!.spec']
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
 dmg:
   title: ${productName}
   contents:

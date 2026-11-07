@@ -341,6 +341,11 @@ export function createMockBridge(): IaeBridge {
     async restartApp() {
       location.reload();
     },
+    async signIn() {
+      emit({ type: 'claude/status', status: 'connecting' });
+      await new Promise((r) => setTimeout(r, 1200));
+      emit({ type: 'claude/status', status: 'ready' });
+    },
     async say(text: string, meta?: SayMeta) {
       emit({ type: 'transcript/append', entry: { id: id('t'), at: now(), who: 'user', text } });
       if (meta?.agendaId) return bridge.answer(meta.agendaId, text);

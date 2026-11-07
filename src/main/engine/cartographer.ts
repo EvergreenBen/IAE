@@ -2,7 +2,7 @@
 // session explores the code and redraws the heuristic map into a real
 // hierarchy, progressively, while the lead greets the person.
 
-import { query, type Query } from '@anthropic-ai/claude-agent-sdk';
+import { query, type Query } from './agent';
 import type { EngineEvent } from '../../shared/events';
 import { describeMap, ownerOf } from '../../shared/map';
 import type { AgentInfo, Settings } from '../../shared/model';

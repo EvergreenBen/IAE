@@ -49,6 +49,8 @@ export interface IaeApi {
   resume(): Promise<ProjectSnapshot | null>;
   /** Quit and start again, loading new code; unfinished builders pick up where they left off. */
   restartApp(): Promise<void>;
+  /** Sign in to the chosen agent. Codex: opens the browser to sign in with ChatGPT; resolves once done (status follows as claude/status). */
+  signIn(): Promise<void>;
 
   // ── conversation
   /** A finished user utterance (spoken or typed). */
@@ -112,6 +114,7 @@ export const BRIDGE_METHODS = [
   'closeProject',
   'resume',
   'restartApp',
+  'signIn',
   'say',
   'draft',
   'interrupt',

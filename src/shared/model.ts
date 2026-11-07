@@ -320,7 +320,13 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
  */
 export type Autonomy = 'ask' | 'edits' | 'full';
 
+/** What every session runs on: Claude Code, or OpenAI's Codex for people without a Claude account. */
+export type Provider = 'claude' | 'codex';
+
 export interface Settings {
+  provider: Provider;
+  /** Codex's model for every role. Empty → whatever Codex defaults to. The *Model fields are Claude's. */
+  codexModel: string;
   leadName: string;
   leadModel: string;
   leadEffort: EffortLevel;
@@ -344,6 +350,8 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  provider: 'claude',
+  codexModel: '',
   leadName: 'Archie',
   leadModel: 'claude-opus-5-5',
   leadEffort: 'low',

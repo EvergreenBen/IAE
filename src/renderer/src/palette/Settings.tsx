@@ -1,6 +1,6 @@
 // Settings, as a small page inside the palette. Each change saves on its own
 // (text fields when you leave them or press ↵).
-import type { Autonomy, Settings as SettingsT } from '@shared/model';
+import type { Autonomy, Provider, Settings as SettingsT } from '@shared/model';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { bridge } from '../bridge';
@@ -20,6 +20,11 @@ const AUTONOMY: { value: AskLevel; label: string; hint: string }[] = [
   { value: 'ask', label: 'Ask first', hint: 'Builders ask before they change a file or run a command.' },
   { value: 'edits', label: 'Ask before commands', hint: 'Builders change files on their own, and ask before running a command.' },
   { value: 'never', label: 'Never ask (Auto)', hint: 'Builders go ahead without stopping. Best in a git repo, where every change can be undone.' },
+];
+
+const PROVIDERS: { value: Provider; label: string; hint: string }[] = [
+  { value: 'claude', label: 'Claude Code', hint: 'Your Claude account (Pro or Max) or an Anthropic API key.' },
+  { value: 'codex', label: 'Codex', hint: 'Your ChatGPT account or an OpenAI API key.' },
 ];
 
 const askLevel = (st: SettingsT): AskLevel => (st.autoApprove || st.autonomy === 'full' ? 'never' : st.autonomy);
@@ -79,37 +84,28 @@ export function SettingsView() {
       <Field label="Lead's name" hint="Who you talk to.">
         <TextSetting label="Lead's name" value={settings.leadName} onCommit={(v) => v && save({ leadName: v })} autoFocus />
       </Field>
-      <Field label="Lead model" hint="Fast and warm. Answers in about a second.">
-        <TextSetting label="Lead model" value={settings.leadModel} mono onCommit={(v) => v && save({ leadModel: v })} />
-      </Field>
-      <Field label="Builder model" hint="Does the real work in each Claude Code session.">
-        <TextSetting label="Builder model" value={settings.builderModel} mono onCommit={(v) => v && save({ builderModel: v })} />
-      </Field>
+      <Choices label="Runs on" options={PROVIDERS} value={settings.provider} onPick={(provider) => void save({ provider })} />
 
-      <div className={s.fieldBlock}>
-        <span className={s.fieldLabel}>Builders ask</span>
-        <div className={s.choices} role="radiogroup" aria-label="When builders ask">
-          {AUTONOMY.map((a) => {
-            const on = askLevel(settings) === a.value;
-            return (
-              <button
-                key={a.value}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                className={on ? `${s.choice} ${s.choiceOn}` : s.choice}
-                onClick={() => !on && void save(askPatch(a.value))}
-              >
-                <span className={s.radio} aria-hidden="true" />
-                <span className={s.choiceText}>
-                  <span className={s.choiceLabel}>{a.label}</span>
-                  <span className={s.choiceHint}>{a.hint}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {settings.provider === 'codex' ? (
+        <Field label="Codex model" hint="Every role uses it. Empty uses Codex's default.">
+          <TextSetting label="Codex model" value={settings.codexModel} mono allowEmpty placeholder="Codex's default" onCommit={(v) => save({ codexModel: v })} />
+        </Field>
+      ) : (
+        <>
+          <Field label="Lead model" hint="Fast and warm. Answers in about a second.">
+            <TextSetting label="Lead model" value={settings.leadModel} mono onCommit={(v) => v && save({ leadModel: v })} />
+          </Field>
+          <Field label="Builder model" hint="Does the real work in each Claude Code session.">
+            <TextSetting label="Builder model" value={settings.builderModel} mono onCommit={(v) => v && save({ builderModel: v })} />
+          </Field>
+        </>
+      )}
+
+      {settings.provider === 'codex' ? (
+        <Field label="Builders ask" hint="Codex builders don't stop to ask. They work inside a sandbox limited to the project folder." />
+      ) : (
+        <Choices label="Builders ask" options={AUTONOMY} value={askLevel(settings)} onPick={(level) => void save(askPatch(level))} />
+      )}
 
       <Field label="Builders at once" hint="How many agents may work in parallel.">
         <div className={s.stepper}>
@@ -154,7 +150,29 @@ export function SettingsView() {
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+function Choices<T extends string>({ label, options, value, onPick }: { label: string; options: { value: T; label: string; hint: string }[]; value: T; onPick: (v: T) => void }) {
+  return (
+    <div className={s.fieldBlock}>
+      <span className={s.fieldLabel}>{label}</span>
+      <div className={s.choices} role="radiogroup" aria-label={label}>
+        {options.map((a) => {
+          const on = value === a.value;
+          return (
+            <button key={a.value} type="button" role="radio" aria-checked={on} className={on ? `${s.choice} ${s.choiceOn}` : s.choice} onClick={() => !on && onPick(a.value)}>
+              <span className={s.radio} aria-hidden="true" />
+              <span className={s.choiceText}>
+                <span className={s.choiceLabel}>{a.label}</span>
+                <span className={s.choiceHint}>{a.hint}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children?: ReactNode }) {
   return (
     <div className={s.field}>
       <span className={s.fieldText}>
@@ -166,12 +184,28 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-function TextSetting({ label, value, onCommit, mono, autoFocus }: { label: string; value: string; onCommit: (v: string) => void; mono?: boolean; autoFocus?: boolean }) {
+function TextSetting({
+  label,
+  value,
+  onCommit,
+  mono,
+  autoFocus,
+  allowEmpty,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onCommit: (v: string) => void;
+  mono?: boolean;
+  autoFocus?: boolean;
+  allowEmpty?: boolean;
+  placeholder?: string;
+}) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   const commit = () => {
     const v = draft.trim();
-    if (v && v !== value) onCommit(v);
+    if ((v || allowEmpty) && v !== value) onCommit(v);
     else setDraft(value);
   };
   return (
@@ -179,6 +213,7 @@ function TextSetting({ label, value, onCommit, mono, autoFocus }: { label: strin
       className={mono ? `${s.text} ${s.mono}` : s.text}
       value={draft}
       aria-label={label}
+      placeholder={placeholder}
       spellCheck={false}
       autoFocus={autoFocus}
       onChange={(e) => setDraft(e.target.value)}

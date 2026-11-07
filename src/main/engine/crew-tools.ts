@@ -1,7 +1,8 @@
 // The small "iae" MCP server each builder, scout and the cartographer gets.
 // One instance per session (an instance binds to a single transport).
 
-import { createSdkMcpServer, tool, type McpSdkServerConfigWithInstance, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk';
+import { tool, type McpSdkServerConfigWithInstance, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk';
+import { toolServer } from './agent';
 import { z } from 'zod';
 import type { AgendaItem, NodeStatus, OpSource } from '../../shared/model';
 import { projectPath } from './activity';
@@ -146,5 +147,5 @@ export function createCrewTools(h: CrewToolHost): McpSdkServerConfigWithInstance
   }
 
   // alwaysLoad: never hide these behind tool search (builders may carry many MCP tools).
-  return createSdkMcpServer({ name: 'iae', version: '0.1.0', tools, alwaysLoad: true, timeout: ANSWER_TIMEOUT_MS + 60_000 });
+  return toolServer({ name: 'iae', version: '0.1.0', tools, alwaysLoad: true, timeout: ANSWER_TIMEOUT_MS + 60_000 });
 }

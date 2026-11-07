@@ -296,16 +296,33 @@ export function Home() {
 function ClaudeLine() {
   const status = useIae((st) => st.claude);
   const detail = useIae((st) => st.claudeDetail);
+  const provider = useIae((st) => st.settings.provider);
+  const codex = provider === 'codex';
+  const name = codex ? 'Codex' : 'Claude Code';
+  const switchTo = async () => useIae.setState({ settings: await bridge.setSettings({ provider: codex ? 'claude' : 'codex' }) });
   let dot = s.dotWait;
-  let text: ReactNode = 'Looking for Claude Code…';
+  let text: ReactNode = `Looking for ${name}…`;
   if (status === 'ready') {
     dot = s.dotOk;
-    text = 'Connected to Claude Code';
+    text = `Connected to ${name}`;
   } else if (status === 'unavailable') {
     dot = s.dotWarn;
-    text = (
+    text = codex ? (
+      <>
+        Codex isn't signed in.
+        <button type="button" className={s.link} onClick={() => void bridge.signIn()}>
+          Sign in with ChatGPT
+        </button>
+        <button type="button" className={s.quiet} onClick={() => void switchTo()}>
+          Use Claude Code instead
+        </button>
+      </>
+    ) : (
       <>
         Claude Code isn't connected. Install it, then run <code>claude</code> once in a terminal to sign in.
+        <button type="button" className={s.quiet} onClick={() => void switchTo()}>
+          Use Codex instead
+        </button>
       </>
     );
   }

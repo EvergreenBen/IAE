@@ -226,6 +226,8 @@ export function mergeSettings(base: Settings, patch: Partial<Settings> | undefin
   const merged: Settings = { ...base, ...p, voice: { ...base.voice, ...(p.voice ?? {}) } };
   if (!['ask', 'edits', 'full'].includes(merged.autonomy)) merged.autonomy = base.autonomy;
   if (typeof merged.autoApprove !== 'boolean') merged.autoApprove = base.autoApprove;
+  if (!['claude', 'codex'].includes(merged.provider)) merged.provider = base.provider;
+  merged.codexModel = typeof merged.codexModel === 'string' ? merged.codexModel.trim() : base.codexModel;
   if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(merged.leadEffort)) merged.leadEffort = base.leadEffort;
   const n = Number(merged.maxBuilders);
   merged.maxBuilders = Number.isFinite(n) ? Math.min(8, Math.max(1, Math.round(n))) : base.maxBuilders;
